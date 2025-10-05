@@ -3,58 +3,55 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="/icons.js"></script>
+
   <style>
     * { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-    .tile { width: 300px; border-radius: 12px; padding: 14px 16px; background: #F6F7FB; box-shadow: 0 2px 10px rgba(0,0,0,.06); color: #1A202C; }
-    .top { display:flex; align-items:center; justify-content:flex-end; margin-bottom:8px; } /* nur Status rechts */
-    .badge { padding:2px 8px; border-radius:999px; font-size:12px; color:#fff; background:#4A5568; }
-    .row { display:flex; align-items:baseline; gap:12px; }
-    .ist { font-size:36px; font-weight:700; }
-    .meta { font-size:13px; color:#4A5568; }
+    /* quadratisch, kleiner, transparent */
+    .tile {
+      width: 200px; height: 200px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: transparent;
+      box-shadow: none;
+      color: #1A202C;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-align: center;
+    }
+    .mode { font-size: 12px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase; color: #4A5568; }
+    .ist  { font-size: 30px; font-weight: 700; line-height: 1; }
+    .meta { font-size: 13px; color: #4A5568; }
 
-    /* Gauge (¾-Kreis, unten offen) */
-    .gauge { width: 100%; margin-top: 10px; }
+    /* ¾-Kreis (unten offen), zentriert und kleiner */
+    .gauge { width: 75%; }
     svg { width: 100%; height: auto; display:block; }
-    .g-bg   { fill: none; stroke: #E2E8F0; stroke-width: 10; }
-    .g-fill { fill: none; stroke: #3182CE; stroke-width: 10; stroke-linecap: round; transition: stroke-dasharray .25s ease; }
-    .g-text { font-size: 14px; fill: #1A202C; font-weight: 600; }
-    .grid { display:flex; justify-content:space-between; margin-top:8px; }
-    .controls { display:flex; gap:6px; align-items:center; }
-    .btn { border:0; border-radius:8px; padding:6px 10px; cursor:pointer; background:#EDF2F7; }
-    .btn:active { transform: translateY(1px); }
+    .g-bg   { fill: none; stroke: #E2E8F0; stroke-width: 8; }
+    .g-fill { fill: none; stroke: #3182CE; stroke-width: 8; stroke-linecap: round; transition: stroke-dasharray .25s ease; }
+    .g-text { font-size: 12px; fill: #1A202C; font-weight: 600; }
   </style>
 </head>
 <body>
   <div class="tile">
-    <div class="top">
-      <!-- nur Status-Badge, kein Raumname -->
-      <span id="status" class="badge">Aus</span>
-    </div>
+    <!-- 1) Betriebsart -->
+    <div id="mode" class="mode">–</div>
 
-    <div class="row">
-      <div id="ist" class="ist">–.–°C</div>
-      <div class="meta">Ist</div>
-    </div>
+    <!-- 2) Ist / Soll in der Mitte -->
+    <div id="ist" class="ist">–.–°C</div>
+    <div class="meta">Soll: <b id="soll">–.–°C</b></div>
 
-    <div class="grid">
-      <div class="meta">Soll: <b id="soll">–.–°C</b></div>
-      <div class="meta">Ventil: <b id="stell">–%</b></div>
-    </div>
-
-    <!-- ¾-Kreis Gauge (unten offen) -->
-    <div class="gauge">
-      <svg viewBox="0 0 100 100" aria-label="Ventilöffnung">
-        <!-- Wir normalisieren die Pfadlänge auf 360, dann sind Dash-Werte in "Grad" -->
-        <!-- Hintergrund: 270° gezeichneter Bogen + 90° Lücke (unten) -->
+    <!-- 3) Stellgröße als ¾-Kreis, unten offen (zentriert) -->
+    <div class="gauge" aria-label="Ventilöffnung">
+      <svg viewBox="0 0 100 100">
         <circle class="g-bg"
-                cx="50" cy="50" r="42"
+                cx="50" cy="50" r="36"
                 pathLength="360"
                 stroke-dasharray="270 90"
                 transform="rotate(135 50 50)"/>
-        <!-- Fortschritt: dynamisch 0..270° -->
         <circle id="gFill" class="g-fill"
-                cx="50" cy="50" r="42"
+                cx="50" cy="50" r="36"
                 pathLength="360"
                 stroke-dasharray="0 360"
                 transform="rotate(135 50 50)"/>
@@ -63,59 +60,47 @@
       </svg>
     </div>
 
-    <div class="grid" style="margin-top:10px;">
-      <div class="controls">
-        <button class="btn" onclick="adjust(-0.5)">−</button>
-        <button class="btn" onclick="adjust( 0.5)">+</button>
-      </div>
-      <!-- Datum/Uhrzeit entfallen -->
+    <!-- +/- Buttons kompakt (optional: auskommentieren, falls nicht gewünscht) -->
+    <div style="display:flex; gap:6px;">
+      <button style="border:0;border-radius:8px;padding:4px 8px;cursor:pointer;background:#EDF2F7;" onclick="adjust(-0.5)">−</button>
+      <button style="border:0;border-radius:8px;padding:4px 8px;cursor:pointer;background:#EDF2F7;" onclick="adjust( 0.5)">+</button>
     </div>
   </div>
 
   <script>
-    // Pflicht: Nachrichten vom Modul entgegennehmen
     function handleMessage(payload) {
-      try { var d = (typeof payload === 'string') ? JSON.parse(payload) : payload; }
-      catch(e) { return; }
+      try { var d = (typeof payload === 'string') ? JSON.parse(payload) : payload; } catch(e) { return; }
 
       // Ist/Soll
       setText('ist',  fmtTemp(d.ist));
       setText('soll', fmtTemp(d.soll));
 
+      // Betriebsart (String oder formatierter Wert)
+      setText('mode', (d.mode != null && d.mode !== '') ? String(d.mode) : '–');
+
       // Stellgröße
       var stell = clamp(Number(d.stell ?? 0), 0, 100);
-      setText('stell', Math.round(stell) + '%');
+      setText('gPct', Math.round(stell) + '%');
 
-      // Status & Farben
-      var fenster = !!d.fenster;
-      var heizt = (stell > 10) && !fenster;
-      var status = fenster ? 'Fenster offen' : (heizt ? 'Heizt' : 'Aus');
-      var badge = document.getElementById('status');
-      badge.textContent = status;
-      badge.style.background = fenster ? '#C53030' : (heizt ? '#2F855A' : '#4A5568');
-
-      // Gauge füllen: 0..270 "Grad" (pathLength=360 → Werte sind Grad)
+      // Gauge füllen: 0..270 "Grad" (pathLength=360 → Gradangabe)
       var fillDeg = 270 * (stell / 100);
       var g = document.getElementById('gFill');
       g.setAttribute('stroke-dasharray', fillDeg + ' ' + (360 - fillDeg));
-      // Prozent in der Mitte
-      setText('gPct', Math.round(stell) + '%');
     }
 
-    function setText(id, txt) { document.getElementById(id).textContent = txt; }
+    function setText(id, txt) { var el = document.getElementById(id); if (el) el.textContent = txt; }
     function fmtTemp(v) { return (v == null) ? '–.–°C' : (Number(v).toFixed(1).replace('.', ',') + '°C'); }
     function clamp(v, a, b){ return Math.min(b, Math.max(a, v)); }
 
-    // Frontend -> Modul (Soll anpassen)
+    // Soll anpassen (nur wenn VarSoll Variablenaktion hat)
     function adjust(delta) {
       var s = document.getElementById('soll').textContent.replace('°C','').replace(',','.');
       var next = clamp(parseFloat(s || '20') + delta, 5, 30);
       requestAction('Setpoint', next);
     }
 
-    // Initiale Daten anfordern (kein null übergeben)
+    // Initiale Daten holen (kein null übergeben)
     requestAction('Refresh', 0);
   </script>
 </body>
 </html>
-
