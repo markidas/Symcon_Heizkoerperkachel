@@ -12,15 +12,15 @@ class HeizungKachel extends IPSModule
         $this->RegisterPropertyInteger('VarIst', 0);     // Float
         $this->RegisterPropertyInteger('VarSoll', 0);    // Float (mit Variablenaktion)
         $this->RegisterPropertyInteger('VarStell', 0);   // Float/Int 0..100
-        $this->RegisterPropertyInteger('VarFenster', 0); // Bool
+        $this->RegisterPropertyInteger('VarMode', 0);    // String ODER Int (mit Profil/Assoziationen)
         $this->RegisterPropertyInteger('Decimals', 1);   // Nachkommastellen
 
-        // HTML-SDK aktivieren (nur aufrufen, wenn vorhanden – abwärtskompatibel)
+        // HTML-SDK aktivieren (abwärtskompatibel)
         if (method_exists($this, 'SetVisualizationType')) {
             $this->SetVisualizationType(1); // 1 = HTML
         }
 
-        // Merkliste für Message-Registrierungen (Fallback zur Deregistrierung)
+        // Merkliste für Message-Registrierungen (Fallback)
         $this->RegisterAttributeString('MsgIDs', '[]');
     }
 
@@ -28,18 +28,16 @@ class HeizungKachel extends IPSModule
     {
         parent::ApplyChanges();
 
-        // 1) Vorherige Message-Registrierungen sauber entfernen (Fallback statt UnregisterMessageAll)
+        // alte Registrierungen entfernen (Fallback statt UnregisterMessageAll)
         $old = json_decode($this->ReadAttributeString('MsgIDs'), true);
-        if (!is_array($old)) {
-            $old = [];
-        }
+        if (!is_array($old)) { $old = []; }
         foreach ($old as $oid) {
             @ $this->UnregisterMessage((int)$oid, VM_UPDATE);
         }
 
-        // 2) Neue Registrierungen + Referenzen setzen
+        // neue Registrierungen + Referenzen
         $newMsgIDs = [];
-        foreach (['VarIst','VarSoll','VarStell','VarFenster'] as $prop) {
+        foreach (['VarIst','VarSoll','VarStell','VarMode'] as $prop) {
             $id = (int)$this->ReadPropertyInteger($prop);
             if ($id > 0) {
                 $this->RegisterMessage($id, VM_UPDATE);
@@ -47,21 +45,15 @@ class HeizungKachel extends IPSModule
                 $newMsgIDs[] = $id;
             }
         }
-        // Merkliste speichern (für nächste ApplyChanges-Runde)
         $this->WriteAttributeString('MsgIDs', json_encode(array_values(array_unique($newMsgIDs))));
 
-        // 3) Status setzen (sichtbar in der Konsole)
-        if (!$this->isConfigured()) {
-            $this->SetStatus(104); // Konfiguration unvollständig
-        } else {
-            $this->SetStatus(102); // Aktiv
-        }
+        // Status
+        $this->SetStatus($this->isConfigured() ? 102 : 104);
 
-        // 4) Initiale Daten an die Kachel pushen
+        // Daten pushen
         $this->PushState();
     }
 
-    /** Formular für die Instanzeigenschaften (Konsole) */
     public function GetConfigurationForm()
     {
         $form = [
@@ -78,10 +70,11 @@ class HeizungKachel extends IPSModule
                     'type'   => 'ExpansionPanel',
                     'caption'=> 'Variablen',
                     'items'  => [
-                        [ 'type' => 'SelectVariable', 'name' => 'VarIst',    'caption' => 'Ist-Temperatur (Float)',            'variableType' => 2 ],
-                        [ 'type' => 'SelectVariable', 'name' => 'VarSoll',   'caption' => 'Soll-Temperatur (Float, mit Aktion)','variableType' => 2 ],
-                        [ 'type' => 'SelectVariable', 'name' => 'VarStell',  'caption' => 'Stellgröße 0–100 % (Float/Int)',     'variableType' => 2 ],
-                        [ 'type' => 'SelectVariable', 'name' => 'VarFenster','caption' => 'Fensterkontakt (Bool)',             'variableType' => 0 ]
+                        [ 'type' => 'SelectVariable', 'name' => 'VarIst',   'caption' => 'Ist-Temperatur (Float)',              'variableType' => 2 ],
+                        [ 'type' => 'SelectVariable', 'name' => 'VarSoll',  'caption' => 'Soll-Temperatur (Float, mit Aktion)', 'variableType' => 2 ],
+                        [ 'type' => 'SelectVariable', 'name' => 'VarStell', 'caption' => 'Stellgröße 0–100 % (Float/Int)' ],
+                        // kein variableType -> erlaubt String ODER Integer
+                        [ 'type' => 'SelectVariable', 'name' => 'VarMode',  'caption' => 'Betriebsart (String oder Int mit Profil)' ]
                     ]
                 ]
             ],
@@ -95,57 +88,55 @@ class HeizungKachel extends IPSModule
                 [ 'code' => 104, 'icon' => 'error',    'caption' => 'Bitte Variablen auswählen (mind. Ist & Soll).' ]
             ]
         ];
-
         return json_encode($form);
     }
 
-    /** Initiales HTML für die Kachel */
     public function GetVisualizationTile(): string
     {
         return file_get_contents(__DIR__ . '/module.html');
     }
 
-    /** Frontend -> Modul (Buttons/Events in module.html) */
     public function RequestAction($Ident, $Value)
     {
         switch ($Ident) {
-            case 'Setpoint': // Solltemperatur setzen
+            case 'Setpoint':
                 $var = (int)$this->ReadPropertyInteger('VarSoll');
                 if ($var > 0) {
-                    @RequestAction($var, (float)$Value); // nutzt ggf. die Variablenaktion der Zielvariable
+                    @RequestAction($var, (float)$Value);
                 }
                 $this->PushState();
                 break;
 
-            case 'Refresh':  // Daten neu senden
+            case 'Refresh':
                 $this->PushState();
                 break;
         }
     }
 
-    /** Modul -> Frontend: aktuelle Werte senden */
     private function PushState(): void
     {
-        $room   = $this->ReadPropertyString('RoomName');
         $dec    = max(0, (int)$this->ReadPropertyInteger('Decimals'));
         $idIst  = (int)$this->ReadPropertyInteger('VarIst');
         $idSoll = (int)$this->ReadPropertyInteger('VarSoll');
         $idSt   = (int)$this->ReadPropertyInteger('VarStell');
-        $idFen  = (int)$this->ReadPropertyInteger('VarFenster');
+        $idMode = (int)$this->ReadPropertyInteger('VarMode');
+
+        // Betriebsart: bevorzugt formatierten Text nehmen (Profile/Assoziationen)
+        $modeText = null;
+        if ($idMode > 0) {
+            $modeText = GetValueFormatted($idMode);
+        }
 
         $data = [
-            'room'    => $room,
-            'ist'     => $idIst  ? round((float)GetValue($idIst),  $dec) : null,
-            'soll'    => $idSoll ? round((float)GetValue($idSoll), $dec) : null,
-            'stell'   => $idSt   ? (float)GetValue($idSt) : null,
-            'fenster' => $idFen  ? (bool)GetValue($idFen) : null,
-            'updated' => date('d.m.Y H:i:s')
+            'ist'   => $idIst  ? round((float)GetValue($idIst),  $dec) : null,
+            'soll'  => $idSoll ? round((float)GetValue($idSoll), $dec) : null,
+            'stell' => $idSt   ? (float)GetValue($idSt) : null,
+            'mode'  => $modeText
         ];
 
         $this->UpdateVisualizationValue(json_encode($data));
     }
 
-    /** Variablenänderungen aus Symcon */
     public function MessageSink($TimeStamp, $SenderID, $Message, $Data)
     {
         if ($Message === VM_UPDATE) {
@@ -155,9 +146,8 @@ class HeizungKachel extends IPSModule
 
     private function isConfigured(): bool
     {
-        // Mindestens Ist & Soll sollten gesetzt sein
+        // Mindestens Ist & Soll müssen gesetzt sein
         return ($this->ReadPropertyInteger('VarIst')  > 0) &&
                ($this->ReadPropertyInteger('VarSoll') > 0);
     }
 }
-
