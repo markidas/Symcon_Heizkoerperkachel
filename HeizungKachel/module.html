@@ -7,24 +7,28 @@
   <style>
     * { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
     .tile { width: 300px; border-radius: 12px; padding: 14px 16px; background: #F6F7FB; box-shadow: 0 2px 10px rgba(0,0,0,.06); color: #1A202C; }
-    .top { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+    .top { display:flex; align-items:center; justify-content:flex-end; margin-bottom:8px; } /* nur Status rechts */
     .badge { padding:2px 8px; border-radius:999px; font-size:12px; color:#fff; background:#4A5568; }
     .row { display:flex; align-items:baseline; gap:12px; }
     .ist { font-size:36px; font-weight:700; }
     .meta { font-size:13px; color:#4A5568; }
-    .bar { height:8px; border-radius:999px; background:#E2E8F0; overflow:hidden; margin-top:6px; }
-    .fill { height:100%; width:0%; background:#3182CE; transition: width .25s ease; }
+
+    /* Gauge (¾-Kreis, unten offen) */
+    .gauge { width: 100%; margin-top: 10px; }
+    svg { width: 100%; height: auto; display:block; }
+    .g-bg   { fill: none; stroke: #E2E8F0; stroke-width: 10; }
+    .g-fill { fill: none; stroke: #3182CE; stroke-width: 10; stroke-linecap: round; transition: stroke-dasharray .25s ease; }
+    .g-text { font-size: 14px; fill: #1A202C; font-weight: 600; }
     .grid { display:flex; justify-content:space-between; margin-top:8px; }
     .controls { display:flex; gap:6px; align-items:center; }
     .btn { border:0; border-radius:8px; padding:6px 10px; cursor:pointer; background:#EDF2F7; }
     .btn:active { transform: translateY(1px); }
-    .foot { margin-top:10px; font-size:12px; color:#718096; }
   </style>
 </head>
 <body>
   <div class="tile">
     <div class="top">
-      <div id="room" style="font-weight:600;">–</div>
+      <!-- nur Status-Badge, kein Raumname -->
       <span id="status" class="badge">Aus</span>
     </div>
 
@@ -38,14 +42,33 @@
       <div class="meta">Ventil: <b id="stell">–%</b></div>
     </div>
 
-    <div class="bar"><div id="fill" class="fill"></div></div>
+    <!-- ¾-Kreis Gauge (unten offen) -->
+    <div class="gauge">
+      <svg viewBox="0 0 100 100" aria-label="Ventilöffnung">
+        <!-- Wir normalisieren die Pfadlänge auf 360, dann sind Dash-Werte in "Grad" -->
+        <!-- Hintergrund: 270° gezeichneter Bogen + 90° Lücke (unten) -->
+        <circle class="g-bg"
+                cx="50" cy="50" r="42"
+                pathLength="360"
+                stroke-dasharray="270 90"
+                transform="rotate(-45 50 50)"/>
+        <!-- Fortschritt: dynamisch 0..270° -->
+        <circle id="gFill" class="g-fill"
+                cx="50" cy="50" r="42"
+                pathLength="360"
+                stroke-dasharray="0 360"
+                transform="rotate(-45 50 50)"/>
+        <!-- Prozent in der Mitte -->
+        <text id="gPct" class="g-text" x="50" y="54" text-anchor="middle">–%</text>
+      </svg>
+    </div>
 
     <div class="grid" style="margin-top:10px;">
       <div class="controls">
         <button class="btn" onclick="adjust(-0.5)">−</button>
         <button class="btn" onclick="adjust( 0.5)">+</button>
       </div>
-      <div class="meta" id="ts">–</div>
+      <!-- Datum/Uhrzeit entfallen -->
     </div>
   </div>
 
@@ -55,37 +78,44 @@
       try { var d = (typeof payload === 'string') ? JSON.parse(payload) : payload; }
       catch(e) { return; }
 
-      // Textwerte
-      setText('room',  d.room ?? 'Raum');
-      setText('ist',   fmtTemp(d.ist));
-      setText('soll',  fmtTemp(d.soll));
-      setText('stell', d.stell != null ? Math.round(d.stell) + '%' : '–%');
-      setText('ts',    d.updated ?? '');
+      // Ist/Soll
+      setText('ist',  fmtTemp(d.ist));
+      setText('soll', fmtTemp(d.soll));
+
+      // Stellgröße
+      var stell = clamp(Number(d.stell ?? 0), 0, 100);
+      setText('stell', Math.round(stell) + '%');
 
       // Status & Farben
       var fenster = !!d.fenster;
-      var heizt = (d.stell ?? 0) > 10 && !fenster;
+      var heizt = (stell > 10) && !fenster;
       var status = fenster ? 'Fenster offen' : (heizt ? 'Heizt' : 'Aus');
       var badge = document.getElementById('status');
       badge.textContent = status;
       badge.style.background = fenster ? '#C53030' : (heizt ? '#2F855A' : '#4A5568');
 
-      // Balken
-      document.getElementById('fill').style.width = (d.stell ?? 0) + '%';
+      // Gauge füllen: 0..270 "Grad" (pathLength=360 → Werte sind Grad)
+      var fillDeg = 270 * (stell / 100);
+      var g = document.getElementById('gFill');
+      g.setAttribute('stroke-dasharray', fillDeg + ' ' + (360 - fillDeg));
+      // Prozent in der Mitte
+      setText('gPct', Math.round(stell) + '%');
     }
 
     function setText(id, txt) { document.getElementById(id).textContent = txt; }
-    function fmtTemp(v) { return (v == null) ? '–.–°C' : (v.toFixed(1).replace('.', ',') + '°C'); }
+    function fmtTemp(v) { return (v == null) ? '–.–°C' : (Number(v).toFixed(1).replace('.', ',') + '°C'); }
+    function clamp(v, a, b){ return Math.min(b, Math.max(a, v)); }
 
-    // Frontend -> Modul
-    function adjust(delta) {                      // per Buttons Soll anpassen
+    // Frontend -> Modul (Soll anpassen)
+    function adjust(delta) {
       var s = document.getElementById('soll').textContent.replace('°C','').replace(',','.');
-      var next = Math.max(5, Math.min(30, parseFloat(s || 20) + delta));
-      requestAction('Setpoint', next);           // ruft im Modul RequestAction(...) auf
+      var next = clamp(parseFloat(s || '20') + delta, 5, 30);
+      requestAction('Setpoint', next);
     }
 
-    // Beim Laden initiale Daten anfordern
-    requestAction('Refresh', 0);              // Modul antwortet mit UpdateVisualizationValue(...)
+    // Initiale Daten anfordern (kein null übergeben)
+    requestAction('Refresh', 0);
   </script>
 </body>
 </html>
+
