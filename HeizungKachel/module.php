@@ -18,7 +18,7 @@ class HeizungKachel extends IPSModule
         // HTML-SDK aktivieren (1 = HTML)
       
         if (method_exists($this, 'SetVisualizationType')) {
-        $this->SetVisualizationType(1);
+        $this->SetVisualizationType(1);}
     }
 
     public function ApplyChanges()
