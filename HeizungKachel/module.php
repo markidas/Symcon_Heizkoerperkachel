@@ -15,36 +15,49 @@ class HeizungKachel extends IPSModule
         $this->RegisterPropertyInteger('VarFenster', 0); // Bool
         $this->RegisterPropertyInteger('Decimals', 1);   // Nachkommastellen
 
-        // HTML-SDK aktivieren (1 = HTML)
-      
+        // HTML-SDK aktivieren (nur aufrufen, wenn vorhanden – abwärtskompatibel)
         if (method_exists($this, 'SetVisualizationType')) {
-        $this->SetVisualizationType(1);}
+            $this->SetVisualizationType(1); // 1 = HTML
+        }
+
+        // Merkliste für Message-Registrierungen (Fallback zur Deregistrierung)
+        $this->RegisterAttributeString('MsgIDs', '[]');
     }
 
     public function ApplyChanges()
     {
         parent::ApplyChanges();
 
-        // Nachrichten deregistrieren
-        $this->UnregisterMessageAll();
+        // 1) Vorherige Message-Registrierungen sauber entfernen (Fallback statt UnregisterMessageAll)
+        $old = json_decode($this->ReadAttributeString('MsgIDs'), true);
+        if (!is_array($old)) {
+            $old = [];
+        }
+        foreach ($old as $oid) {
+            @ $this->UnregisterMessage((int)$oid, VM_UPDATE);
+        }
 
-        // Auf Variablen-Updates reagieren und Referenzen halten
-        foreach (['VarIst', 'VarSoll', 'VarStell', 'VarFenster'] as $prop) {
-            $id = $this->ReadPropertyInteger($prop);
+        // 2) Neue Registrierungen + Referenzen setzen
+        $newMsgIDs = [];
+        foreach (['VarIst','VarSoll','VarStell','VarFenster'] as $prop) {
+            $id = (int)$this->ReadPropertyInteger($prop);
             if ($id > 0) {
                 $this->RegisterMessage($id, VM_UPDATE);
                 $this->RegisterReference($id);
+                $newMsgIDs[] = $id;
             }
         }
+        // Merkliste speichern (für nächste ApplyChanges-Runde)
+        $this->WriteAttributeString('MsgIDs', json_encode(array_values(array_unique($newMsgIDs))));
 
-        // Status setzen (sichtbar in der Konsole)
+        // 3) Status setzen (sichtbar in der Konsole)
         if (!$this->isConfigured()) {
             $this->SetStatus(104); // Konfiguration unvollständig
         } else {
             $this->SetStatus(102); // Aktiv
         }
 
-        // Initialdaten an die Kachel
+        // 4) Initiale Daten an die Kachel pushen
         $this->PushState();
     }
 
@@ -73,7 +86,7 @@ class HeizungKachel extends IPSModule
                 ]
             ],
             'actions' => [
-                [ 'type' => 'Button', 'caption' => 'Jetzt aktualisieren', 'onClick' => "IPS_RequestAction($id, 'Refresh', null);" ],
+                [ 'type' => 'Button', 'caption' => 'Jetzt aktualisieren', 'onClick' => "IPS_RequestAction(\$id, 'Refresh', null);" ],
                 [ 'type' => 'Label',  'caption' => 'Hinweis: Die Soll-Temperatur-Variable sollte eine Variablenaktion besitzen, damit +/- in der Kachel funktioniert.' ]
             ],
             'status' => [
@@ -97,9 +110,9 @@ class HeizungKachel extends IPSModule
     {
         switch ($Ident) {
             case 'Setpoint': // Solltemperatur setzen
-                $var = $this->ReadPropertyInteger('VarSoll');
+                $var = (int)$this->ReadPropertyInteger('VarSoll');
                 if ($var > 0) {
-                    @RequestAction($var, (float)$Value); // nutzt ggf. die Variablenaktion
+                    @RequestAction($var, (float)$Value); // nutzt ggf. die Variablenaktion der Zielvariable
                 }
                 $this->PushState();
                 break;
@@ -114,11 +127,11 @@ class HeizungKachel extends IPSModule
     private function PushState(): void
     {
         $room   = $this->ReadPropertyString('RoomName');
-        $dec    = max(0, $this->ReadPropertyInteger('Decimals'));
-        $idIst  = $this->ReadPropertyInteger('VarIst');
-        $idSoll = $this->ReadPropertyInteger('VarSoll');
-        $idSt   = $this->ReadPropertyInteger('VarStell');
-        $idFen  = $this->ReadPropertyInteger('VarFenster');
+        $dec    = max(0, (int)$this->ReadPropertyInteger('Decimals'));
+        $idIst  = (int)$this->ReadPropertyInteger('VarIst');
+        $idSoll = (int)$this->ReadPropertyInteger('VarSoll');
+        $idSt   = (int)$this->ReadPropertyInteger('VarStell');
+        $idFen  = (int)$this->ReadPropertyInteger('VarFenster');
 
         $data = [
             'room'    => $room,
@@ -147,3 +160,4 @@ class HeizungKachel extends IPSModule
                ($this->ReadPropertyInteger('VarSoll') > 0);
     }
 }
+
