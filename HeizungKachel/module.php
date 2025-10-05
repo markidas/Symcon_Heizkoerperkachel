@@ -86,7 +86,7 @@ class HeizungKachel extends IPSModule
                 ]
             ],
             'actions' => [
-                [ 'type' => 'Button', 'caption' => 'Jetzt aktualisieren', 'onClick' => "IPS_RequestAction(\$id, 'Refresh', null);" ],
+                [ 'type' => 'Button', 'caption' => 'Jetzt aktualisieren', 'onClick' => "IPS_RequestAction(\$id, 'Refresh', 0);" ],
                 [ 'type' => 'Label',  'caption' => 'Hinweis: Die Soll-Temperatur-Variable sollte eine Variablenaktion besitzen, damit +/- in der Kachel funktioniert.' ]
             ],
             'status' => [
