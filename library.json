@@ -1,0 +1,12 @@
+{
+  "id": "{A1D5A1F6-6E0E-4E5C-9B30-5B3B0A1D9E77}",
+  "name": "Symcon_Heizkoerperkachel",
+  "author": "markidas",
+  "url": "https://github.com/markidas/Symcon_Heizkoerperkachel",
+  "compatibility": {
+    "version": "7.1"
+  },
+  "version": "1.0.0",
+  "build": 1,
+  "date": 20251005
+}

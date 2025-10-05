@@ -1,0 +1,91 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/icons.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+    .tile { width: 300px; border-radius: 12px; padding: 14px 16px; background: #F6F7FB; box-shadow: 0 2px 10px rgba(0,0,0,.06); color: #1A202C; }
+    .top { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+    .badge { padding:2px 8px; border-radius:999px; font-size:12px; color:#fff; background:#4A5568; }
+    .row { display:flex; align-items:baseline; gap:12px; }
+    .ist { font-size:36px; font-weight:700; }
+    .meta { font-size:13px; color:#4A5568; }
+    .bar { height:8px; border-radius:999px; background:#E2E8F0; overflow:hidden; margin-top:6px; }
+    .fill { height:100%; width:0%; background:#3182CE; transition: width .25s ease; }
+    .grid { display:flex; justify-content:space-between; margin-top:8px; }
+    .controls { display:flex; gap:6px; align-items:center; }
+    .btn { border:0; border-radius:8px; padding:6px 10px; cursor:pointer; background:#EDF2F7; }
+    .btn:active { transform: translateY(1px); }
+    .foot { margin-top:10px; font-size:12px; color:#718096; }
+  </style>
+</head>
+<body>
+  <div class="tile">
+    <div class="top">
+      <div id="room" style="font-weight:600;">–</div>
+      <span id="status" class="badge">Aus</span>
+    </div>
+
+    <div class="row">
+      <div id="ist" class="ist">–.–°C</div>
+      <div class="meta">Ist</div>
+    </div>
+
+    <div class="grid">
+      <div class="meta">Soll: <b id="soll">–.–°C</b></div>
+      <div class="meta">Ventil: <b id="stell">–%</b></div>
+    </div>
+
+    <div class="bar"><div id="fill" class="fill"></div></div>
+
+    <div class="grid" style="margin-top:10px;">
+      <div class="controls">
+        <button class="btn" onclick="adjust(-0.5)">−</button>
+        <button class="btn" onclick="adjust( 0.5)">+</button>
+      </div>
+      <div class="meta" id="ts">–</div>
+    </div>
+  </div>
+
+  <script>
+    // Pflicht: Nachrichten vom Modul entgegennehmen
+    function handleMessage(payload) {
+      try { var d = (typeof payload === 'string') ? JSON.parse(payload) : payload; }
+      catch(e) { return; }
+
+      // Textwerte
+      setText('room',  d.room ?? 'Raum');
+      setText('ist',   fmtTemp(d.ist));
+      setText('soll',  fmtTemp(d.soll));
+      setText('stell', d.stell != null ? Math.round(d.stell) + '%' : '–%');
+      setText('ts',    d.updated ?? '');
+
+      // Status & Farben
+      var fenster = !!d.fenster;
+      var heizt = (d.stell ?? 0) > 10 && !fenster;
+      var status = fenster ? 'Fenster offen' : (heizt ? 'Heizt' : 'Aus');
+      var badge = document.getElementById('status');
+      badge.textContent = status;
+      badge.style.background = fenster ? '#C53030' : (heizt ? '#2F855A' : '#4A5568');
+
+      // Balken
+      document.getElementById('fill').style.width = (d.stell ?? 0) + '%';
+    }
+
+    function setText(id, txt) { document.getElementById(id).textContent = txt; }
+    function fmtTemp(v) { return (v == null) ? '–.–°C' : (v.toFixed(1).replace('.', ',') + '°C'); }
+
+    // Frontend -> Modul
+    function adjust(delta) {                      // per Buttons Soll anpassen
+      var s = document.getElementById('soll').textContent.replace('°C','').replace(',','.');
+      var next = Math.max(5, Math.min(30, parseFloat(s || 20) + delta));
+      requestAction('Setpoint', next);           // ruft im Modul RequestAction(...) auf
+    }
+
+    // Beim Laden initiale Daten anfordern
+    requestAction('Refresh', null);              // Modul antwortet mit UpdateVisualizationValue(...)
+  </script>
+</body>
+</html>
