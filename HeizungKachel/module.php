@@ -16,6 +16,8 @@ class HeizungKachel extends IPSModule
         $this->RegisterPropertyInteger('Decimals', 1);   // Nachkommastellen
 
         // HTML-SDK aktivieren (1 = HTML)
+      
+        if (method_exists($this, 'SetVisualizationType')) {
         $this->SetVisualizationType(1);
     }
 
