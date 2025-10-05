@@ -1,0 +1,12 @@
+{
+  "id": "{A1D5A1F6-6E0E-4E5C-9B30-5B3B0A1D9E77}",
+  "name": "HeizungKachel",
+  "author": "Du",
+  "url": "https://example.com/heizungskachel",
+  "compatibility": {
+    "version": "7.1"
+  },
+  "version": "1.0",
+  "build": 1,
+  "date": 20251005
+}
