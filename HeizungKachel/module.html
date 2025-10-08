@@ -63,27 +63,32 @@
     setText('stell', (state.stell!=null? Math.round(state.stell)+'%' : '–%'));
     setText('mode', (state.mode && state.mode.trim()!=='') ? state.mode : '–');
 
-    // === NEU: Design aus Konfiguration anwenden ===
-    if (d.style){
-      const aw  = Math.max(2, Number(d.style.aw || 8));
-      const fg1 = (d.style.fg1 || '#3182CE');
-      const fg2 = (d.style.fg2 || fg1);
-      const bg  = (d.style.bg  || '#E2E8F0');
+    // === Design aus Konfiguration anwenden (überschreibt CSS per Inline-Style) ===
+if (d.style){
+  const aw  = Math.max(2, Number(d.style.aw || 8));
+  const fg1 = (d.style.fg1 || '#3182CE');
+  const fg2 = (d.style.fg2 || fg1);
+  const bg  = (d.style.bg  || '#E2E8F0');
 
-      // Bogenbreite
-      document.querySelectorAll('.bg').forEach(el => el.setAttribute('stroke-width', aw));
-      document.querySelectorAll('.fg').forEach(el => el.setAttribute('stroke-width', aw));
+  // Bogenbreite & Hintergrundfarbe
+  document.querySelectorAll('.bg').forEach(el => {
+    el.style.strokeWidth = aw + 'px';
+    el.style.stroke = bg;
+  });
 
-      // Hintergrundfarbe
-      document.querySelectorAll('.bg').forEach(el => el.setAttribute('stroke', bg));
+  document.querySelectorAll('.fg').forEach(el => {
+    el.style.strokeWidth = aw + 'px';
+    // Stroke kommt aus dem Verlauf, Stylebreite reicht hier
+  });
 
-      // Vordergrund-Verlauf
-      document.getElementById('gStop1').setAttribute('stop-color', fg1);
-      document.getElementById('gStop2').setAttribute('stop-color', fg2);
+  // Gradient-Farben für den sichtbaren Bogen
+  document.getElementById('gStop1').setAttribute('stop-color', fg1);
+  document.getElementById('gStop2').setAttribute('stop-color', fg2);
 
-      // Knopf-Farbe an FG-Start anlehnen (optional)
-      document.getElementById('knob').setAttribute('fill', fg2);
-    }
+  // Knopf-Farbe an FG-Ende anlehnen (optional)
+  document.getElementById('knob').style.fill = fg2;
+}
+
 
     if (state.soll!=null) setArcFromValue(state.soll); else setArcFromValue(SL_MIN);
   }
