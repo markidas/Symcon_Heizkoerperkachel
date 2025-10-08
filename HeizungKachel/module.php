@@ -169,11 +169,22 @@ class HeizungKachel extends IPSModule
     }
 
     private function sanitizeColor(string $c): string
-    {
-        $c = trim($c);
-        if ($c === '') return '#000000';
-        // akzeptiere #RGB, #RRGGBB, rgb(), rgba(), hsl() grundsätzlich
-        if ($c[0] === '#') return strtoupper($c);
-        return $c; // für rgb(...)/hsl(...) etc.
+{
+    $c = trim($c);
+    if ($c === '') return '#000000';
+
+    // #RRGGBB oder #RGB → groß schreiben
+    if ($c[0] === '#') {
+        return strtoupper($c);
     }
+
+    // 6-stelliger Hex ohne #: automatisch # voranstellen
+    if (preg_match('/^[0-9A-Fa-f]{6}$/', $c)) {
+        return '#' . strtoupper($c);
+    }
+
+    // Alles andere (rgb(...), hsl(...), keyword) durchreichen
+    return $c;
+}
+
 }
