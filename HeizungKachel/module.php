@@ -7,20 +7,26 @@ class HeizungKachel extends IPSModule
     {
         parent::Create();
 
-        // Eigenschaften (per Formular änderbar)
+        // Daten-Eigenschaften
         $this->RegisterPropertyString('RoomName', 'Wohnzimmer');
-        $this->RegisterPropertyInteger('VarIst', 0);     // Float
-        $this->RegisterPropertyInteger('VarSoll', 0);    // Float (mit Variablenaktion)
-        $this->RegisterPropertyInteger('VarStell', 0);   // Float/Int 0..100
-        $this->RegisterPropertyInteger('VarMode', 0);    // String ODER Int (mit Profil/Assoziationen)
-        $this->RegisterPropertyInteger('Decimals', 1);   // Nachkommastellen
+        $this->RegisterPropertyInteger('VarIst', 0);
+        $this->RegisterPropertyInteger('VarSoll', 0);   // mit Variablenaktion
+        $this->RegisterPropertyInteger('VarStell', 0);
+        $this->RegisterPropertyInteger('VarMode', 0);
+        $this->RegisterPropertyInteger('Decimals', 1);
+
+        // Design-Eigenschaften (NEU)
+        $this->RegisterPropertyInteger('ArcWidth', 8);
+        $this->RegisterPropertyString('ArcColorStart', '#3182CE'); // FG-Start
+        $this->RegisterPropertyString('ArcColorEnd',   '#3182CE'); // FG-Ende (gleich = einfarbig)
+        $this->RegisterPropertyString('ArcBgColor',    '#E2E8F0'); // Hintergrundbogen
 
         // HTML-SDK aktivieren (abwärtskompatibel)
         if (method_exists($this, 'SetVisualizationType')) {
-            $this->SetVisualizationType(1); // 1 = HTML
+            $this->SetVisualizationType(1);
         }
 
-        // Merkliste für Message-Registrierungen (Fallback)
+        // Fallback für Message-Deregistrierung
         $this->RegisterAttributeString('MsgIDs', '[]');
     }
 
@@ -28,14 +34,14 @@ class HeizungKachel extends IPSModule
     {
         parent::ApplyChanges();
 
-        // alte Registrierungen entfernen (Fallback statt UnregisterMessageAll)
+        // Alte Registrierungen entfernen
         $old = json_decode($this->ReadAttributeString('MsgIDs'), true);
         if (!is_array($old)) { $old = []; }
         foreach ($old as $oid) {
             @ $this->UnregisterMessage((int)$oid, VM_UPDATE);
         }
 
-        // neue Registrierungen + Referenzen
+        // Neue Registrierungen
         $newMsgIDs = [];
         foreach (['VarIst','VarSoll','VarStell','VarMode'] as $prop) {
             $id = (int)$this->ReadPropertyInteger($prop);
@@ -50,7 +56,7 @@ class HeizungKachel extends IPSModule
         // Status
         $this->SetStatus($this->isConfigured() ? 102 : 104);
 
-        // Daten pushen
+        // HTML initial befüllen
         $this->PushState();
     }
 
@@ -73,14 +79,23 @@ class HeizungKachel extends IPSModule
                         [ 'type' => 'SelectVariable', 'name' => 'VarIst',   'caption' => 'Ist-Temperatur (Float)',              'variableType' => 2 ],
                         [ 'type' => 'SelectVariable', 'name' => 'VarSoll',  'caption' => 'Soll-Temperatur (Float, mit Aktion)', 'variableType' => 2 ],
                         [ 'type' => 'SelectVariable', 'name' => 'VarStell', 'caption' => 'Stellgröße 0–100 % (Float/Int)' ],
-                        // kein variableType -> erlaubt String ODER Integer
-                        [ 'type' => 'SelectVariable', 'name' => 'VarMode',  'caption' => 'Betriebsart (String oder Int mit Profil)' ]
+                        [ 'type' => 'SelectVariable', 'name' => 'VarMode',  'caption' => 'Betriebsart (String/Int mit Profil)' ]
+                    ]
+                ],
+                [
+                    'type'   => 'ExpansionPanel',
+                    'caption'=> 'Design',
+                    'items'  => [
+                        [ 'type' => 'NumberSpinner',     'name' => 'ArcWidth',      'caption' => 'Bogenbreite (px)', 'minimum' => 2, 'maximum' => 24 ],
+                        [ 'type' => 'ValidationTextBox', 'name' => 'ArcColorStart', 'caption' => 'Vordergrund Startfarbe (#RRGGBB)' ],
+                        [ 'type' => 'ValidationTextBox', 'name' => 'ArcColorEnd',   'caption' => 'Vordergrund Endfarbe (#RRGGBB)' ],
+                        [ 'type' => 'ValidationTextBox', 'name' => 'ArcBgColor',    'caption' => 'Hintergrundfarbe (#RRGGBB)' ]
                     ]
                 ]
             ],
             'actions' => [
                 [ 'type' => 'Button', 'caption' => 'Jetzt aktualisieren', 'onClick' => "IPS_RequestAction(\$id, 'Refresh', 0);" ],
-                [ 'type' => 'Label',  'caption' => 'Hinweis: Die Soll-Temperatur-Variable sollte eine Variablenaktion besitzen, damit +/- in der Kachel funktioniert.' ]
+                [ 'type' => 'Label',  'caption' => 'Hinweis: Die Soll-Temperatur-Variable braucht eine Variablenaktion, damit der Slider schreiben kann.' ]
             ],
             'status' => [
                 [ 'code' => 101, 'icon' => 'inactive', 'caption' => 'Wird erstellt' ],
@@ -114,23 +129,31 @@ class HeizungKachel extends IPSModule
     }
 
     private function PushState(): void
-{
-    $dec    = max(0, (int)$this->ReadPropertyInteger('Decimals'));
-    $idIst  = (int)$this->ReadPropertyInteger('VarIst');
-    $idSoll = (int)$this->ReadPropertyInteger('VarSoll');
-    $idSt   = (int)$this->ReadPropertyInteger('VarStell');
-    $idMode = (int)$this->ReadPropertyInteger('VarMode');
+    {
+        $dec    = max(0, (int)$this->ReadPropertyInteger('Decimals'));
+        $idIst  = (int)$this->ReadPropertyInteger('VarIst');
+        $idSoll = (int)$this->ReadPropertyInteger('VarSoll');
+        $idSt   = (int)$this->ReadPropertyInteger('VarStell');
+        $idMode = (int)$this->ReadPropertyInteger('VarMode');
 
-    $data = [
-        'ist'   => $idIst  ? round((float)GetValue($idIst),  $dec) : null,
-        'soll'  => $idSoll ? round((float)GetValue($idSoll), $dec) : null,
-        'stell' => $idSt   ? (float)GetValue($idSt) : null,
-        'mode'  => $idMode ? GetValueFormatted($idMode) : null
-    ];
-    $this->UpdateVisualizationValue(json_encode($data));
-}
+        // Designwerte aus der Konfiguration
+        $style = [
+            'aw'  => max(2, (int)$this->ReadPropertyInteger('ArcWidth')),
+            'fg1' => $this->sanitizeColor($this->ReadPropertyString('ArcColorStart')),
+            'fg2' => $this->sanitizeColor($this->ReadPropertyString('ArcColorEnd')),
+            'bg'  => $this->sanitizeColor($this->ReadPropertyString('ArcBgColor'))
+        ];
 
+        $data = [
+            'ist'   => $idIst  ? round((float)GetValue($idIst),  $dec) : null,
+            'soll'  => $idSoll ? round((float)GetValue($idSoll), $dec) : null,
+            'stell' => $idSt   ? (float)GetValue($idSt) : null,
+            'mode'  => $idMode ? GetValueFormatted($idMode) : null,
+            'style' => $style
+        ];
 
+        $this->UpdateVisualizationValue(json_encode($data));
+    }
 
     public function MessageSink($TimeStamp, $SenderID, $Message, $Data)
     {
@@ -141,8 +164,16 @@ class HeizungKachel extends IPSModule
 
     private function isConfigured(): bool
     {
-        // Mindestens Ist & Soll müssen gesetzt sein
         return ($this->ReadPropertyInteger('VarIst')  > 0) &&
                ($this->ReadPropertyInteger('VarSoll') > 0);
+    }
+
+    private function sanitizeColor(string $c): string
+    {
+        $c = trim($c);
+        if ($c === '') return '#000000';
+        // akzeptiere #RGB, #RRGGBB, rgb(), rgba(), hsl() grundsätzlich
+        if ($c[0] === '#') return strtoupper($c);
+        return $c; // für rgb(...)/hsl(...) etc.
     }
 }
