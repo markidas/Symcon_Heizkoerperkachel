@@ -4,7 +4,6 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-  /* quadratisch, kompakt, transparenter Hintergrund */
   .tile{
     width:200px;height:200px;padding:8px 10px;border-radius:12px;background:transparent;color:#1A202C;
     display:grid;grid-auto-rows:max-content;align-content:center;justify-items:center;gap:6px;text-align:center
@@ -14,42 +13,41 @@
   .meta{font-size:13px;color:#4A5568}
   .val{font-weight:700}
 
-  /* Arc-Slider (¾-Kreis unten offen) */
   .arc{width:78%}
   svg{width:100%;height:auto;display:block;touch-action:none}
-  .bg{fill:none;stroke:#E2E8F0;stroke-width:2}
-  .fg{fill:none;stroke:#3182CE;stroke-width:2;stroke-linecap:round;transition:stroke-dasharray .15s ease}
+  /* Default-Werte – werden von JS aus der Konfiguration überschrieben */
+  .bg{fill:none;stroke:#E2E8F0;stroke-width:8}
+  .fg{fill:none;stroke:#3182CE;stroke-width:8;stroke-linecap:round;transition:stroke-dasharray .15s ease}
   .knob{fill:#3182CE;stroke:#fff;stroke-width:2}
 </style>
 </head>
 <body>
   <div class="tile">
-    <!-- Betriebsart -->
     <div id="mode" class="mode">–</div>
-
-    <!-- Ist/Soll -->
     <div id="ist" class="ist">–.–°C</div>
     <div class="meta">Soll: <span id="soll" class="val">–.–°C</span></div>
-
-    <!-- Ventil in Textform -->
     <div class="meta">Ventil: <span id="stell" class="val">–%</span></div>
 
-    <!-- gebogener Schieberegler -->
     <div class="arc" aria-label="Solltemperatur einstellen">
       <svg id="arc" viewBox="0 0 100 100">
-        <!-- 270° Bogen + 90° Lücke unten (rotate 135°) -->
+        <defs>
+          <!-- Gradient für Vordergrund; Farben werden per JS gesetzt -->
+          <linearGradient id="arcGrad" gradientUnits="userSpaceOnUse"
+                          x1="14" y1="50" x2="86" y2="50"
+                          gradientTransform="rotate(135 50 50)">
+            <stop id="gStop1" offset="0%"   stop-color="#3182CE"/>
+            <stop id="gStop2" offset="100%" stop-color="#3182CE"/>
+          </linearGradient>
+        </defs>
         <circle class="bg" cx="50" cy="50" r="36" pathLength="360" stroke-dasharray="270 90" transform="rotate(135 50 50)"></circle>
-        <circle id="fill" class="fg" cx="50" cy="50" r="36" pathLength="360" stroke-dasharray="0 360" transform="rotate(135 50 50)"></circle>
-        <!-- Knopf auf dem Bogen -->
+        <circle id="fill" class="fg" cx="50" cy="50" r="36" pathLength="360" stroke-dasharray="0 360" transform="rotate(135 50 50)" stroke="url(#arcGrad)"></circle>
         <circle id="knob" class="knob" cx="50" cy="14" r="4" />
       </svg>
     </div>
   </div>
 
 <script>
-  // Slider-Parameter (bei Bedarf anpassen)
   const SL_MIN = 5, SL_MAX = 30, SL_STEP = 0.5;
-
   let state = { soll:null, ist:null, stell:null, mode:null, dragging:false };
 
   function handleMessage(payload){
@@ -60,18 +58,37 @@
     state.stell = toNum(d.stell);
     state.mode  = (d.mode!=null)? String(d.mode) : '';
 
-    // Textwerte
     setText('ist',  fmtTemp(state.ist));
     setText('soll', fmtTemp(state.soll));
     setText('stell', (state.stell!=null? Math.round(state.stell)+'%' : '–%'));
     setText('mode', (state.mode && state.mode.trim()!=='') ? state.mode : '–');
 
-    // Arc auf Soll positionieren
-    if (state.soll!=null) setArcFromValue(state.soll);
-    else setArcFromValue(SL_MIN);
+    // === NEU: Design aus Konfiguration anwenden ===
+    if (d.style){
+      const aw  = Math.max(2, Number(d.style.aw || 8));
+      const fg1 = (d.style.fg1 || '#3182CE');
+      const fg2 = (d.style.fg2 || fg1);
+      const bg  = (d.style.bg  || '#E2E8F0');
+
+      // Bogenbreite
+      document.querySelectorAll('.bg').forEach(el => el.setAttribute('stroke-width', aw));
+      document.querySelectorAll('.fg').forEach(el => el.setAttribute('stroke-width', aw));
+
+      // Hintergrundfarbe
+      document.querySelectorAll('.bg').forEach(el => el.setAttribute('stroke', bg));
+
+      // Vordergrund-Verlauf
+      document.getElementById('gStop1').setAttribute('stop-color', fg1);
+      document.getElementById('gStop2').setAttribute('stop-color', fg2);
+
+      // Knopf-Farbe an FG-Start anlehnen (optional)
+      document.getElementById('knob').setAttribute('fill', fg2);
+    }
+
+    if (state.soll!=null) setArcFromValue(state.soll); else setArcFromValue(SL_MIN);
   }
 
-  // === Arc-Interaktion ===
+  // Arc-Interaktion
   const svg  = document.getElementById('arc');
   const fill = document.getElementById('fill');
   const knob = document.getElementById('knob');
@@ -86,7 +103,6 @@
     if (!state.dragging) return;
     state.dragging = false;
     svg.releasePointerCapture(e.pointerId);
-    // beim Loslassen schreiben
     if (state.soll!=null) requestAction('Setpoint', state.soll);
   }
 
@@ -95,14 +111,10 @@
     const x = ((e.clientX - rect.left) / rect.width ) * 100;
     const y = ((e.clientY - rect.top ) / rect.height) * 100;
 
-    // Winkel berechnen (0..360)
     let ang = Math.atan2(y-50, x-50) * 180/Math.PI; if (ang < 0) ang += 360;
-
-    // auf 0..270 abbilden (Start bei 135° = 0)
     let a = ang - 135; if (a < 0) a += 360;
     a = clamp(a, 0, 270);
 
-    // in Sollwert umrechnen
     const t = a / 270;
     let val = SL_MIN + t * (SL_MAX - SL_MIN);
     val = quantize(val, SL_STEP);
@@ -116,10 +128,8 @@
   function setArcFromValue(val){
     const t = (val - SL_MIN) / (SL_MAX - SL_MIN);
     const deg = clamp(270 * t, 0, 270);
-
     fill.setAttribute('stroke-dasharray', deg + ' ' + (360 - deg));
 
-    // Knopfposition entlang des Bogens
     const angle = (135 + deg) * Math.PI/180;
     const r = 36, cx = 50 + r * Math.cos(angle), cy = 50 + r * Math.sin(angle);
     knob.setAttribute('cx', cx.toFixed(2));
@@ -133,7 +143,6 @@
   function clamp(v,a,b){ return Math.min(b, Math.max(a, v)); }
   function quantize(v, step){ if (!step || step<=0) return v; return Math.round(v/step)*step; }
 
-  // Initial laden
   requestAction('Refresh', 0);
 </script>
 </body>
