@@ -1,103 +1,171 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .tile{width:200px;height:200px;padding:8px 10px;border-radius:12px;background:transparent;color:#1A202C;
+        display:grid;grid-auto-rows:max-content;align-content:center;justify-items:center;gap:6px;text-align:center}
+  .mode{font-size:12px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;color:#4A5568}
+  .ist{font-size:30px;font-weight:700;line-height:1}
+  .meta{font-size:13px;color:#4A5568}
+  .val{font-weight:700}
+  .row{display:flex;gap:6px;align-items:center}
+  .link{font-size:11px;color:#3182CE;cursor:pointer;user-select:none}
+  .link[disabled]{opacity:.4;cursor:default}
 
-  <style>
-    * { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-    /* quadratisch, kompakt, transparenter Hintergrund */
-    .tile{
-      width: 200px; height: 200px;            /* bei Bedarf anpassen (z.B. 180px) */
-      padding: 10px;
-      border-radius: 12px;
-      background: transparent;
-      color: #1A202C;
-      display: grid;
-      grid-auto-rows: max-content;
-      align-content: center;
-      justify-items: center;
-      gap: 8px;
-      text-align: center;
-    }
-    .mode { font-size: 12px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase; color: #4A5568; }
-    .ist  { font-size: 30px; font-weight: 700; line-height: 1; }
-    .meta { font-size: 13px; color: #4A5568; }
-    .soll-val { font-weight: 700; }
-
-    /* Slider schlank */
-    .slider-wrap{ width: 100%; padding: 0 6px; }
-    input[type="range"]{
-      -webkit-appearance: none; appearance: none;
-      width: 100%; height: 6px; border-radius: 999px;
-      background: #E2E8F0; outline: none;
-    }
-    input[type="range"]::-webkit-slider-thumb{
-      -webkit-appearance: none; appearance: none;
-      width: 18px; height: 18px; border-radius: 50%;
-      background: #3182CE; cursor: pointer; border: none;
-    }
-    input[type="range"]::-moz-range-thumb{
-      width: 18px; height: 18px; border-radius: 50%;
-      background: #3182CE; cursor: pointer; border: none;
-    }
-
-    .scale { display:flex; justify-content:space-between; width:100%; font-size:11px; color:#718096; margin-top:2px; }
-  </style>
+  /* Arc-Slider (¾-Kreis, unten offen) */
+  .arc{width:78%}
+  svg{width:100%;height:auto;display:block;touch-action:none}
+  .bg{fill:none;stroke:#E2E8F0;stroke-width:8}
+  .fg{fill:none;stroke:#3182CE;stroke-width:8;stroke-linecap:round;transition:stroke-dasharray .15s ease}
+  .knob{fill:#3182CE;stroke:#fff;stroke-width:2}
+</style>
 </head>
 <body>
   <div class="tile">
-    <!-- Betriebsart -->
-    <div id="mode" class="mode">–</div>
+    <div class="row">
+      <div id="mode" class="mode">–</div>
+      <span id="openMode" class="link" disabled>öffnen</span>
+    </div>
 
-    <!-- Ist/Soll Text -->
-    <div id="ist" class="ist">–.–°C</div>
-    <div class="meta">Soll: <span id="soll" class="soll-val">–.–°C</span></div>
+    <div class="row">
+      <div id="ist" class="ist">–.–°C</div>
+      <span id="openIst" class="link" disabled>öffnen</span>
+    </div>
 
-    <!-- Schieberegler für Soll -->
-    <div class="slider-wrap">
-      <!-- min/max/step nach Wunsch anpassen -->
-      <input id="sld" type="range" min="5" max="30" step="0.5" value="20"
-             oninput="previewSetpoint(this.value)" onchange="commitSetpoint(this.value)">
-      <div class="scale"><span>5°</span><span>30°</span></div>
+    <div class="meta">Soll: <span id="soll" class="val">–.–°C</span> <span id="openSoll" class="link" disabled>öffnen</span></div>
+    <div class="meta">Ventil: <span id="stell" class="val">–%</span> <span id="openStell" class="link" disabled>öffnen</span></div>
+
+    <!-- gebogener Slider -->
+    <div class="arc">
+      <svg id="arc" viewBox="0 0 100 100" aria-label="Solltemperatur einstellen">
+        <!-- 270° Bogen + 90° Lücke unten (rotate 135°) -->
+        <circle class="bg" cx="50" cy="50" r="36" pathLength="360" stroke-dasharray="270 90" transform="rotate(135 50 50)"></circle>
+        <circle id="fill" class="fg" cx="50" cy="50" r="36" pathLength="360" stroke-dasharray="0 360" transform="rotate(135 50 50)"></circle>
+        <!-- Knopf auf dem Bogen -->
+        <circle id="knob" class="knob" cx="50" cy="14" r="4" />
+      </svg>
     </div>
   </div>
 
-  <script>
-    function handleMessage(payload){
-      try { var d = (typeof payload === 'string') ? JSON.parse(payload) : payload; } catch(e){ return; }
+<script>
+  // Slider-Parameter (bei Bedarf ändern)
+  const SL_MIN = 5, SL_MAX = 30, SL_STEP = 0.5;
 
-      // Ist/Soll anzeigen
-      setText('ist',  fmtTemp(d.ist));
-      setText('soll', fmtTemp(d.soll));
+  let state = {
+    soll: null, ist: null, stell: null, mode: null,
+    ids: { ist:0, soll:0, stell:0, mode:0 },
+    dragging: false
+  };
 
-      // Slider-Position auf Soll setzen (falls vorhanden)
-      var sld = document.getElementById('sld');
-      if (d.soll != null && !isNaN(d.soll)) {
-        var v = clamp(Number(d.soll), Number(sld.min), Number(sld.max));
-        sld.value = v;
-      }
+  function handleMessage(payload){
+    try{ var d = (typeof payload==='string')? JSON.parse(payload) : payload; } catch(e){ return; }
 
-      // Betriebsart
-      setText('mode', (d.mode != null && String(d.mode).trim() !== '') ? String(d.mode) : '–');
+    // Werte
+    state.ist   = toNum(d.ist);
+    state.soll  = toNum(d.soll);
+    state.stell = toNum(d.stell);
+    state.mode  = (d.mode!=null)? String(d.mode) : '';
+
+    // IDs (für openObject ab 8.2)
+    if (d.ids){ state.ids = d.ids; }
+
+    // Anzeige
+    setText('ist',  fmtTemp(state.ist));
+    setText('soll', fmtTemp(state.soll));
+    setText('stell', (state.stell!=null? Math.round(state.stell)+'%' : '–%'));
+    setText('mode', (state.mode && state.mode.trim()!=='') ? state.mode : '–');
+
+    // Links aktivieren, wenn openObject verfügbar
+    const hasOpen = (typeof openObject === 'function');
+    linkEnable('openIst',  hasOpen && state.ids.ist>0,  state.ids.ist);
+    linkEnable('openSoll', hasOpen && state.ids.soll>0, state.ids.soll);
+    linkEnable('openStell',hasOpen && state.ids.stell>0,state.ids.stell);
+    linkEnable('openMode', hasOpen && state.ids.mode>0, state.ids.mode);
+
+    // Arc auf Soll positionieren
+    if (state.soll!=null) setArcFromValue(state.soll);
+  }
+
+  function linkEnable(id, ok, oid){
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (ok){
+      el.removeAttribute('disabled');
+      el.onclick = ()=>openObject(oid); // requires IP-Symcon ≥ 8.2
+    } else {
+      el.setAttribute('disabled','');
+      el.onclick = null;
     }
+  }
 
-    function previewSetpoint(v){
-      // Anzeige sofort aktualisieren, ohne sofort zu schreiben
-      setText('soll', fmtTemp(v));
-    }
+  // === Arc-Logik ===
+  const svg  = document.getElementById('arc');
+  const fill = document.getElementById('fill');
+  const knob = document.getElementById('knob');
 
-    function commitSetpoint(v){
-      // Wert an das Modul senden (setzt VarSoll via RequestAction)
-      requestAction('Setpoint', parseFloat(v));
-    }
+  svg.addEventListener('pointerdown', startDrag);
+  window.addEventListener('pointermove', onDrag);
+  window.addEventListener('pointerup', endDrag);
 
-    function setText(id, txt){ var el=document.getElementById(id); if(el) el.textContent=txt; }
-    function fmtTemp(v){ return (v==null) ? '–.–°C' : (Number(v).toFixed(1).replace('.', ',') + '°C'); }
-    function clamp(v,a,b){ return Math.min(b, Math.max(a, v)); }
+  function startDrag(e){ state.dragging = true; svg.setPointerCapture(e.pointerId); updateFromPointer(e, false); }
+  function onDrag(e){ if (!state.dragging) return; updateFromPointer(e, false); }
+  function endDrag(e){
+    if (!state.dragging) return;
+    state.dragging = false;
+    svg.releasePointerCapture(e.pointerId);
+    // Wert übernehmen
+    if (state.soll!=null) requestAction('Setpoint', state.soll);
+  }
 
-    // Initial laden
-    requestAction('Refresh', 0);
-  </script>
+  function updateFromPointer(e, commit){
+    const rect = svg.getBoundingClientRect();
+    const x = ( (e.clientX - rect.left) / rect.width ) * 100;
+    const y = ( (e.clientY - rect.top)  / rect.height) * 100;
+
+    // Winkel berechnen
+    let ang = Math.atan2(y-50, x-50) * 180/Math.PI; // 0..360
+    if (ang < 0) ang += 360;
+
+    // In 0..360 ab 135° drehen, dann auf 0..270 klemmen
+    let a = ang - 135; if (a < 0) a += 360;
+    a = clamp(a, 0, 270);
+
+    // in Wert umrechnen
+    const t = a / 270;
+    let val = SL_MIN + t * (SL_MAX - SL_MIN);
+    val = quantize(val, SL_STEP);
+    val = clamp(val, SL_MIN, SL_MAX);
+
+    // Vorschau
+    state.soll = val;
+    setText('soll', fmtTemp(val));
+    setArcFromValue(val);
+  }
+
+  function setArcFromValue(val){
+    const t = (val - SL_MIN) / (SL_MAX - SL_MIN);
+    const deg = clamp(270 * t, 0, 270);
+
+    fill.setAttribute('stroke-dasharray', deg + ' ' + (360 - deg));
+
+    // Knopf-Position entlang des Bogens
+    const angle = (135 + deg) * Math.PI/180;
+    const r = 36, cx = 50 + r * Math.cos(angle), cy = 50 + r * Math.sin(angle);
+    knob.setAttribute('cx', cx.toFixed(2));
+    knob.setAttribute('cy', cy.toFixed(2));
+  }
+
+  // Utils
+  function setText(id, txt){ const el=document.getElementById(id); if (el) el.textContent=txt; }
+  function fmtTemp(v){ return (v==null)? '–.–°C' : (Number(v).toFixed(1).replace('.', ',') + '°C'); }
+  function toNum(v){ return (v==null || isNaN(v)) ? null : Number(v); }
+  function clamp(v,a,b){ return Math.min(b, Math.max(a, v)); }
+  function quantize(v, step){ if (!step || step<=0) return v; return Math.round(v/step)*step; }
+
+  // Start
+  requestAction('Refresh', 0);
+</script>
 </body>
 </html>
