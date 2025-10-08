@@ -125,13 +125,11 @@ class HeizungKachel extends IPSModule
         'ist'   => $idIst  ? round((float)GetValue($idIst),  $dec) : null,
         'soll'  => $idSoll ? round((float)GetValue($idSoll), $dec) : null,
         'stell' => $idSt   ? (float)GetValue($idSt) : null,
-        'mode'  => $idMode ? GetValueFormatted($idMode) : null,
-        // IDs für openObject() (funktioniert ab IP-Symcon 8.2 in der Visualisierung)
-        'ids'   => [ 'ist'=>$idIst, 'soll'=>$idSoll, 'stell'=>$idSt, 'mode'=>$idMode ]
+        'mode'  => $idMode ? GetValueFormatted($idMode) : null
     ];
-
     $this->UpdateVisualizationValue(json_encode($data));
 }
+
 
 
     public function MessageSink($TimeStamp, $SenderID, $Message, $Data)
