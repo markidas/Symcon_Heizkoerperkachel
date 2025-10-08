@@ -114,28 +114,25 @@ class HeizungKachel extends IPSModule
     }
 
     private function PushState(): void
-    {
-        $dec    = max(0, (int)$this->ReadPropertyInteger('Decimals'));
-        $idIst  = (int)$this->ReadPropertyInteger('VarIst');
-        $idSoll = (int)$this->ReadPropertyInteger('VarSoll');
-        $idSt   = (int)$this->ReadPropertyInteger('VarStell');
-        $idMode = (int)$this->ReadPropertyInteger('VarMode');
+{
+    $dec    = max(0, (int)$this->ReadPropertyInteger('Decimals'));
+    $idIst  = (int)$this->ReadPropertyInteger('VarIst');
+    $idSoll = (int)$this->ReadPropertyInteger('VarSoll');
+    $idSt   = (int)$this->ReadPropertyInteger('VarStell');
+    $idMode = (int)$this->ReadPropertyInteger('VarMode');
 
-        // Betriebsart: bevorzugt formatierten Text nehmen (Profile/Assoziationen)
-        $modeText = null;
-        if ($idMode > 0) {
-            $modeText = GetValueFormatted($idMode);
-        }
+    $data = [
+        'ist'   => $idIst  ? round((float)GetValue($idIst),  $dec) : null,
+        'soll'  => $idSoll ? round((float)GetValue($idSoll), $dec) : null,
+        'stell' => $idSt   ? (float)GetValue($idSt) : null,
+        'mode'  => $idMode ? GetValueFormatted($idMode) : null,
+        // IDs für openObject() (funktioniert ab IP-Symcon 8.2 in der Visualisierung)
+        'ids'   => [ 'ist'=>$idIst, 'soll'=>$idSoll, 'stell'=>$idSt, 'mode'=>$idMode ]
+    ];
 
-        $data = [
-            'ist'   => $idIst  ? round((float)GetValue($idIst),  $dec) : null,
-            'soll'  => $idSoll ? round((float)GetValue($idSoll), $dec) : null,
-            'stell' => $idSt   ? (float)GetValue($idSt) : null,
-            'mode'  => $modeText
-        ];
+    $this->UpdateVisualizationValue(json_encode($data));
+}
 
-        $this->UpdateVisualizationValue(json_encode($data));
-    }
 
     public function MessageSink($TimeStamp, $SenderID, $Message, $Data)
     {
