@@ -6,100 +6,97 @@
 
   <style>
     * { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-    /* quadratisch, kleiner, transparent */
-    .tile {
-      width: 200px; height: 200px;
-      padding: 8px 10px;
+    /* quadratisch, kompakt, transparenter Hintergrund */
+    .tile{
+      width: 200px; height: 200px;            /* bei Bedarf anpassen (z.B. 180px) */
+      padding: 10px;
       border-radius: 12px;
       background: transparent;
-      box-shadow: none;
       color: #1A202C;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
+      display: grid;
+      grid-auto-rows: max-content;
+      align-content: center;
+      justify-items: center;
+      gap: 8px;
       text-align: center;
     }
     .mode { font-size: 12px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase; color: #4A5568; }
     .ist  { font-size: 30px; font-weight: 700; line-height: 1; }
     .meta { font-size: 13px; color: #4A5568; }
+    .soll-val { font-weight: 700; }
 
-    /* ¾-Kreis (unten offen), zentriert und kleiner */
-    .gauge { width: 75%; }
-    svg { width: 100%; height: auto; display:block; }
-    .g-bg   { fill: none; stroke: #E2E8F0; stroke-width: 8; }
-    .g-fill { fill: none; stroke: #3182CE; stroke-width: 8; stroke-linecap: round; transition: stroke-dasharray .25s ease; }
-    .g-text { font-size: 12px; fill: #1A202C; font-weight: 600; }
+    /* Slider schlank */
+    .slider-wrap{ width: 100%; padding: 0 6px; }
+    input[type="range"]{
+      -webkit-appearance: none; appearance: none;
+      width: 100%; height: 6px; border-radius: 999px;
+      background: #E2E8F0; outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb{
+      -webkit-appearance: none; appearance: none;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #3182CE; cursor: pointer; border: none;
+    }
+    input[type="range"]::-moz-range-thumb{
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #3182CE; cursor: pointer; border: none;
+    }
+
+    .scale { display:flex; justify-content:space-between; width:100%; font-size:11px; color:#718096; margin-top:2px; }
   </style>
 </head>
 <body>
   <div class="tile">
-    <!-- 1) Betriebsart -->
+    <!-- Betriebsart -->
     <div id="mode" class="mode">–</div>
 
-    <!-- 2) Ist / Soll in der Mitte -->
+    <!-- Ist/Soll Text -->
     <div id="ist" class="ist">–.–°C</div>
-    <div class="meta">Soll: <b id="soll">–.–°C</b></div>
+    <div class="meta">Soll: <span id="soll" class="soll-val">–.–°C</span></div>
 
-    <!-- 3) Stellgröße als ¾-Kreis, unten offen (zentriert) -->
-    <div class="gauge" aria-label="Ventilöffnung">
-      <svg viewBox="0 0 100 100">
-        <circle class="g-bg"
-                cx="50" cy="50" r="36"
-                pathLength="360"
-                stroke-dasharray="270 90"
-                transform="rotate(135 50 50)"/>
-        <circle id="gFill" class="g-fill"
-                cx="50" cy="50" r="36"
-                pathLength="360"
-                stroke-dasharray="0 360"
-                transform="rotate(135 50 50)"/>
-        <!-- Prozent in der Mitte -->
-        <text id="gPct" class="g-text" x="50" y="54" text-anchor="middle">–%</text>
-      </svg>
-    </div>
-
-    <!-- +/- Buttons kompakt (optional: auskommentieren, falls nicht gewünscht) -->
-    <div style="display:flex; gap:6px;">
-      <button style="border:0;border-radius:8px;padding:4px 8px;cursor:pointer;background:#EDF2F7;" onclick="adjust(-0.5)">−</button>
-      <button style="border:0;border-radius:8px;padding:4px 8px;cursor:pointer;background:#EDF2F7;" onclick="adjust( 0.5)">+</button>
+    <!-- Schieberegler für Soll -->
+    <div class="slider-wrap">
+      <!-- min/max/step nach Wunsch anpassen -->
+      <input id="sld" type="range" min="5" max="30" step="0.5" value="20"
+             oninput="previewSetpoint(this.value)" onchange="commitSetpoint(this.value)">
+      <div class="scale"><span>5°</span><span>30°</span></div>
     </div>
   </div>
 
   <script>
-    function handleMessage(payload) {
-      try { var d = (typeof payload === 'string') ? JSON.parse(payload) : payload; } catch(e) { return; }
+    function handleMessage(payload){
+      try { var d = (typeof payload === 'string') ? JSON.parse(payload) : payload; } catch(e){ return; }
 
-      // Ist/Soll
+      // Ist/Soll anzeigen
       setText('ist',  fmtTemp(d.ist));
       setText('soll', fmtTemp(d.soll));
 
-      // Betriebsart (String oder formatierter Wert)
-      setText('mode', (d.mode != null && d.mode !== '') ? String(d.mode) : '–');
+      // Slider-Position auf Soll setzen (falls vorhanden)
+      var sld = document.getElementById('sld');
+      if (d.soll != null && !isNaN(d.soll)) {
+        var v = clamp(Number(d.soll), Number(sld.min), Number(sld.max));
+        sld.value = v;
+      }
 
-      // Stellgröße
-      var stell = clamp(Number(d.stell ?? 0), 0, 100);
-      setText('gPct', Math.round(stell) + '%');
-
-      // Gauge füllen: 0..270 "Grad" (pathLength=360 → Gradangabe)
-      var fillDeg = 270 * (stell / 100);
-      var g = document.getElementById('gFill');
-      g.setAttribute('stroke-dasharray', fillDeg + ' ' + (360 - fillDeg));
+      // Betriebsart
+      setText('mode', (d.mode != null && String(d.mode).trim() !== '') ? String(d.mode) : '–');
     }
 
-    function setText(id, txt) { var el = document.getElementById(id); if (el) el.textContent = txt; }
-    function fmtTemp(v) { return (v == null) ? '–.–°C' : (Number(v).toFixed(1).replace('.', ',') + '°C'); }
-    function clamp(v, a, b){ return Math.min(b, Math.max(a, v)); }
-
-    // Soll anpassen (nur wenn VarSoll Variablenaktion hat)
-    function adjust(delta) {
-      var s = document.getElementById('soll').textContent.replace('°C','').replace(',','.');
-      var next = clamp(parseFloat(s || '20') + delta, 5, 30);
-      requestAction('Setpoint', next);
+    function previewSetpoint(v){
+      // Anzeige sofort aktualisieren, ohne sofort zu schreiben
+      setText('soll', fmtTemp(v));
     }
 
-    // Initiale Daten holen (kein null übergeben)
+    function commitSetpoint(v){
+      // Wert an das Modul senden (setzt VarSoll via RequestAction)
+      requestAction('Setpoint', parseFloat(v));
+    }
+
+    function setText(id, txt){ var el=document.getElementById(id); if(el) el.textContent=txt; }
+    function fmtTemp(v){ return (v==null) ? '–.–°C' : (Number(v).toFixed(1).replace('.', ',') + '°C'); }
+    function clamp(v,a,b){ return Math.min(b, Math.max(a, v)); }
+
+    // Initial laden
     requestAction('Refresh', 0);
   </script>
 </body>
