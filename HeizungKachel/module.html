@@ -4,17 +4,17 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-  .tile{width:200px;height:200px;padding:8px 10px;border-radius:12px;background:transparent;color:#1A202C;
-        display:grid;grid-auto-rows:max-content;align-content:center;justify-items:center;gap:6px;text-align:center}
+  /* quadratisch, kompakt, transparenter Hintergrund */
+  .tile{
+    width:200px;height:200px;padding:8px 10px;border-radius:12px;background:transparent;color:#1A202C;
+    display:grid;grid-auto-rows:max-content;align-content:center;justify-items:center;gap:6px;text-align:center
+  }
   .mode{font-size:12px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;color:#4A5568}
   .ist{font-size:30px;font-weight:700;line-height:1}
   .meta{font-size:13px;color:#4A5568}
   .val{font-weight:700}
-  .row{display:flex;gap:6px;align-items:center}
-  .link{font-size:11px;color:#3182CE;cursor:pointer;user-select:none}
-  .link[disabled]{opacity:.4;cursor:default}
 
-  /* Arc-Slider (¾-Kreis, unten offen) */
+  /* Arc-Slider (¾-Kreis unten offen) */
   .arc{width:78%}
   svg{width:100%;height:auto;display:block;touch-action:none}
   .bg{fill:none;stroke:#E2E8F0;stroke-width:8}
@@ -24,22 +24,19 @@
 </head>
 <body>
   <div class="tile">
-    <div class="row">
-      <div id="mode" class="mode">–</div>
-      <span id="openMode" class="link" disabled>öffnen</span>
-    </div>
+    <!-- Betriebsart -->
+    <div id="mode" class="mode">–</div>
 
-    <div class="row">
-      <div id="ist" class="ist">–.–°C</div>
-      <span id="openIst" class="link" disabled>öffnen</span>
-    </div>
+    <!-- Ist/Soll -->
+    <div id="ist" class="ist">–.–°C</div>
+    <div class="meta">Soll: <span id="soll" class="val">–.–°C</span></div>
 
-    <div class="meta">Soll: <span id="soll" class="val">–.–°C</span> <span id="openSoll" class="link" disabled>öffnen</span></div>
-    <div class="meta">Ventil: <span id="stell" class="val">–%</span> <span id="openStell" class="link" disabled>öffnen</span></div>
+    <!-- Ventil in Textform -->
+    <div class="meta">Ventil: <span id="stell" class="val">–%</span></div>
 
-    <!-- gebogener Slider -->
-    <div class="arc">
-      <svg id="arc" viewBox="0 0 100 100" aria-label="Solltemperatur einstellen">
+    <!-- gebogener Schieberegler -->
+    <div class="arc" aria-label="Solltemperatur einstellen">
+      <svg id="arc" viewBox="0 0 100 100">
         <!-- 270° Bogen + 90° Lücke unten (rotate 135°) -->
         <circle class="bg" cx="50" cy="50" r="36" pathLength="360" stroke-dasharray="270 90" transform="rotate(135 50 50)"></circle>
         <circle id="fill" class="fg" cx="50" cy="50" r="36" pathLength="360" stroke-dasharray="0 360" transform="rotate(135 50 50)"></circle>
@@ -50,57 +47,31 @@
   </div>
 
 <script>
-  // Slider-Parameter (bei Bedarf ändern)
+  // Slider-Parameter (bei Bedarf anpassen)
   const SL_MIN = 5, SL_MAX = 30, SL_STEP = 0.5;
 
-  let state = {
-    soll: null, ist: null, stell: null, mode: null,
-    ids: { ist:0, soll:0, stell:0, mode:0 },
-    dragging: false
-  };
+  let state = { soll:null, ist:null, stell:null, mode:null, dragging:false };
 
   function handleMessage(payload){
     try{ var d = (typeof payload==='string')? JSON.parse(payload) : payload; } catch(e){ return; }
 
-    // Werte
     state.ist   = toNum(d.ist);
     state.soll  = toNum(d.soll);
     state.stell = toNum(d.stell);
     state.mode  = (d.mode!=null)? String(d.mode) : '';
 
-    // IDs (für openObject ab 8.2)
-    if (d.ids){ state.ids = d.ids; }
-
-    // Anzeige
+    // Textwerte
     setText('ist',  fmtTemp(state.ist));
     setText('soll', fmtTemp(state.soll));
     setText('stell', (state.stell!=null? Math.round(state.stell)+'%' : '–%'));
     setText('mode', (state.mode && state.mode.trim()!=='') ? state.mode : '–');
 
-    // Links aktivieren, wenn openObject verfügbar
-    const hasOpen = (typeof openObject === 'function');
-    linkEnable('openIst',  hasOpen && state.ids.ist>0,  state.ids.ist);
-    linkEnable('openSoll', hasOpen && state.ids.soll>0, state.ids.soll);
-    linkEnable('openStell',hasOpen && state.ids.stell>0,state.ids.stell);
-    linkEnable('openMode', hasOpen && state.ids.mode>0, state.ids.mode);
-
     // Arc auf Soll positionieren
     if (state.soll!=null) setArcFromValue(state.soll);
+    else setArcFromValue(SL_MIN);
   }
 
-  function linkEnable(id, ok, oid){
-    const el = document.getElementById(id);
-    if (!el) return;
-    if (ok){
-      el.removeAttribute('disabled');
-      el.onclick = ()=>openObject(oid); // requires IP-Symcon ≥ 8.2
-    } else {
-      el.setAttribute('disabled','');
-      el.onclick = null;
-    }
-  }
-
-  // === Arc-Logik ===
+  // === Arc-Interaktion ===
   const svg  = document.getElementById('arc');
   const fill = document.getElementById('fill');
   const knob = document.getElementById('knob');
@@ -109,36 +80,34 @@
   window.addEventListener('pointermove', onDrag);
   window.addEventListener('pointerup', endDrag);
 
-  function startDrag(e){ state.dragging = true; svg.setPointerCapture(e.pointerId); updateFromPointer(e, false); }
-  function onDrag(e){ if (!state.dragging) return; updateFromPointer(e, false); }
+  function startDrag(e){ state.dragging = true; svg.setPointerCapture(e.pointerId); updateFromPointer(e); }
+  function onDrag(e){ if (!state.dragging) return; updateFromPointer(e); }
   function endDrag(e){
     if (!state.dragging) return;
     state.dragging = false;
     svg.releasePointerCapture(e.pointerId);
-    // Wert übernehmen
+    // beim Loslassen schreiben
     if (state.soll!=null) requestAction('Setpoint', state.soll);
   }
 
-  function updateFromPointer(e, commit){
+  function updateFromPointer(e){
     const rect = svg.getBoundingClientRect();
-    const x = ( (e.clientX - rect.left) / rect.width ) * 100;
-    const y = ( (e.clientY - rect.top)  / rect.height) * 100;
+    const x = ((e.clientX - rect.left) / rect.width ) * 100;
+    const y = ((e.clientY - rect.top ) / rect.height) * 100;
 
-    // Winkel berechnen
-    let ang = Math.atan2(y-50, x-50) * 180/Math.PI; // 0..360
-    if (ang < 0) ang += 360;
+    // Winkel berechnen (0..360)
+    let ang = Math.atan2(y-50, x-50) * 180/Math.PI; if (ang < 0) ang += 360;
 
-    // In 0..360 ab 135° drehen, dann auf 0..270 klemmen
+    // auf 0..270 abbilden (Start bei 135° = 0)
     let a = ang - 135; if (a < 0) a += 360;
     a = clamp(a, 0, 270);
 
-    // in Wert umrechnen
+    // in Sollwert umrechnen
     const t = a / 270;
     let val = SL_MIN + t * (SL_MAX - SL_MIN);
     val = quantize(val, SL_STEP);
     val = clamp(val, SL_MIN, SL_MAX);
 
-    // Vorschau
     state.soll = val;
     setText('soll', fmtTemp(val));
     setArcFromValue(val);
@@ -150,7 +119,7 @@
 
     fill.setAttribute('stroke-dasharray', deg + ' ' + (360 - deg));
 
-    // Knopf-Position entlang des Bogens
+    // Knopfposition entlang des Bogens
     const angle = (135 + deg) * Math.PI/180;
     const r = 36, cx = 50 + r * Math.cos(angle), cy = 50 + r * Math.sin(angle);
     knob.setAttribute('cx', cx.toFixed(2));
@@ -164,7 +133,7 @@
   function clamp(v,a,b){ return Math.min(b, Math.max(a, v)); }
   function quantize(v, step){ if (!step || step<=0) return v; return Math.round(v/step)*step; }
 
-  // Start
+  // Initial laden
   requestAction('Refresh', 0);
 </script>
 </body>
