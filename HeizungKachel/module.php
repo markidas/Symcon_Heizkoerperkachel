@@ -11,15 +11,16 @@ class HeizungKachel extends IPSModule
         $this->RegisterPropertyString('RoomName', 'Wohnzimmer');
         $this->RegisterPropertyInteger('VarIst', 0);
         $this->RegisterPropertyInteger('VarSoll', 0);   // mit Variablenaktion
-        $this->RegisterPropertyInteger('VarStell', 0);
+        $this->RegisterPropertyInteger('VarStell', 0);  // 0..100 %
         $this->RegisterPropertyInteger('VarMode', 0);
         $this->RegisterPropertyInteger('Decimals', 1);
 
-        // Design-Eigenschaften (NEU)
-        $this->RegisterPropertyInteger('ArcWidth', 8);
-        $this->RegisterPropertyString('ArcColorStart', '#3182CE'); // FG-Start
-        $this->RegisterPropertyString('ArcColorEnd',   '#3182CE'); // FG-Ende (gleich = einfarbig)
-        $this->RegisterPropertyString('ArcBgColor',    '#E2E8F0'); // Hintergrundbogen
+        // Design-Eigenschaften (konfigurierbar)
+        $this->RegisterPropertyInteger('ArcWidth', 8);                // Basis bei 200x200 px
+        $this->RegisterPropertyString('ArcColorStart', '#3182CE');    // FG Start
+        $this->RegisterPropertyString('ArcColorEnd',   '#3182CE');    // FG Ende
+        $this->RegisterPropertyString('ArcBgColor',    '#E2E8F0');    // BG Ring
+        $this->RegisterPropertyString('ArcKnobColor',  '#3182CE');    // Punktfarbe
 
         // HTML-SDK aktivieren (abwärtskompatibel)
         if (method_exists($this, 'SetVisualizationType')) {
@@ -56,7 +57,7 @@ class HeizungKachel extends IPSModule
         // Status
         $this->SetStatus($this->isConfigured() ? 102 : 104);
 
-        // HTML initial befüllen
+        // Initiale Daten pushen
         $this->PushState();
     }
 
@@ -65,17 +66,15 @@ class HeizungKachel extends IPSModule
         $form = [
             'elements' => [
                 [
-                    'type'   => 'ExpansionPanel',
-                    'caption'=> 'Allgemein',
-                    'items'  => [
+                    'type' => 'ExpansionPanel', 'caption' => 'Allgemein',
+                    'items' => [
                         [ 'type' => 'ValidationTextBox', 'name' => 'RoomName', 'caption' => 'Raumname' ],
-                        [ 'type' => 'NumberSpinner',     'name' => 'Decimals', 'caption' => 'Nachkommastellen', 'minimum' => 0, 'maximum' => 2 ]
+                        [ 'type' => 'NumberSpinner', 'name' => 'Decimals', 'caption' => 'Nachkommastellen', 'minimum' => 0, 'maximum' => 2 ]
                     ]
                 ],
                 [
-                    'type'   => 'ExpansionPanel',
-                    'caption'=> 'Variablen',
-                    'items'  => [
+                    'type' => 'ExpansionPanel', 'caption' => 'Variablen',
+                    'items' => [
                         [ 'type' => 'SelectVariable', 'name' => 'VarIst',   'caption' => 'Ist-Temperatur (Float)',              'variableType' => 2 ],
                         [ 'type' => 'SelectVariable', 'name' => 'VarSoll',  'caption' => 'Soll-Temperatur (Float, mit Aktion)', 'variableType' => 2 ],
                         [ 'type' => 'SelectVariable', 'name' => 'VarStell', 'caption' => 'Stellgröße 0–100 % (Float/Int)' ],
@@ -83,19 +82,19 @@ class HeizungKachel extends IPSModule
                     ]
                 ],
                 [
-                    'type'   => 'ExpansionPanel',
-                    'caption'=> 'Design',
-                    'items'  => [
-                        [ 'type' => 'NumberSpinner',     'name' => 'ArcWidth',      'caption' => 'Bogenbreite (px)', 'minimum' => 2, 'maximum' => 24 ],
+                    'type' => 'ExpansionPanel', 'caption' => 'Design',
+                    'items' => [
+                        [ 'type' => 'NumberSpinner',     'name' => 'ArcWidth',      'caption' => 'Bogenbreite (Basis bei 200px)', 'minimum' => 2, 'maximum' => 24 ],
                         [ 'type' => 'ValidationTextBox', 'name' => 'ArcColorStart', 'caption' => 'Vordergrund Startfarbe (#RRGGBB)' ],
                         [ 'type' => 'ValidationTextBox', 'name' => 'ArcColorEnd',   'caption' => 'Vordergrund Endfarbe (#RRGGBB)' ],
-                        [ 'type' => 'ValidationTextBox', 'name' => 'ArcBgColor',    'caption' => 'Hintergrundfarbe (#RRGGBB)' ]
+                        [ 'type' => 'ValidationTextBox', 'name' => 'ArcBgColor',    'caption' => 'Hintergrundfarbe (#RRGGBB)' ],
+                        [ 'type' => 'ValidationTextBox', 'name' => 'ArcKnobColor',  'caption' => 'Punktfarbe (#RRGGBB)' ]
                     ]
                 ]
             ],
             'actions' => [
                 [ 'type' => 'Button', 'caption' => 'Jetzt aktualisieren', 'onClick' => "IPS_RequestAction(\$id, 'Refresh', 0);" ],
-                [ 'type' => 'Label',  'caption' => 'Hinweis: Die Soll-Temperatur-Variable braucht eine Variablenaktion, damit der Slider schreiben kann.' ]
+                [ 'type' => 'Label',  'caption' => 'Hinweis: Die Soll-Temperatur-Variable braucht eine Variablenaktion, damit +/- schreiben kann.' ]
             ],
             'status' => [
                 [ 'code' => 101, 'icon' => 'inactive', 'caption' => 'Wird erstellt' ],
@@ -136,18 +135,19 @@ class HeizungKachel extends IPSModule
         $idSt   = (int)$this->ReadPropertyInteger('VarStell');
         $idMode = (int)$this->ReadPropertyInteger('VarMode');
 
-        // Designwerte aus der Konfiguration
+        // Designwerte
         $style = [
-            'aw'  => max(2, (int)$this->ReadPropertyInteger('ArcWidth')),
-            'fg1' => $this->sanitizeColor($this->ReadPropertyString('ArcColorStart')),
-            'fg2' => $this->sanitizeColor($this->ReadPropertyString('ArcColorEnd')),
-            'bg'  => $this->sanitizeColor($this->ReadPropertyString('ArcBgColor'))
+            'aw'   => max(2, (int)$this->ReadPropertyInteger('ArcWidth')),
+            'fg1'  => $this->sanitizeColor($this->ReadPropertyString('ArcColorStart')),
+            'fg2'  => $this->sanitizeColor($this->ReadPropertyString('ArcColorEnd')),
+            'bg'   => $this->sanitizeColor($this->ReadPropertyString('ArcBgColor')),
+            'knob' => $this->sanitizeColor($this->ReadPropertyString('ArcKnobColor'))
         ];
 
         $data = [
             'ist'   => $idIst  ? round((float)GetValue($idIst),  $dec) : null,
             'soll'  => $idSoll ? round((float)GetValue($idSoll), $dec) : null,
-            'stell' => $idSt   ? (float)GetValue($idSt) : null,
+            'stell' => $idSt   ? (float)GetValue($idSt) : null, // 0..100
             'mode'  => $idMode ? GetValueFormatted($idMode) : null,
             'style' => $style
         ];
@@ -169,22 +169,11 @@ class HeizungKachel extends IPSModule
     }
 
     private function sanitizeColor(string $c): string
-{
-    $c = trim($c);
-    if ($c === '') return '#000000';
-
-    // #RRGGBB oder #RGB → groß schreiben
-    if ($c[0] === '#') {
-        return strtoupper($c);
+    {
+        $c = trim($c);
+        if ($c === '') return '#000000';
+        if ($c[0] === '#') return strtoupper($c);
+        if (preg_match('/^[0-9A-Fa-f]{6}$/', $c)) return '#'.strtoupper($c);
+        return $c;
     }
-
-    // 6-stelliger Hex ohne #: automatisch # voranstellen
-    if (preg_match('/^[0-9A-Fa-f]{6}$/', $c)) {
-        return '#' . strtoupper($c);
-    }
-
-    // Alles andere (rgb(...), hsl(...), keyword) durchreichen
-    return $c;
-}
-
 }
