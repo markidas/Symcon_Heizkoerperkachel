@@ -93,8 +93,8 @@
   const fs = Number(state.style?.fs ?? 1.0); // kannst du lassen – Basisgröße ist jetzt kleiner
 
   // ↓ kleinere Basis-Multiplikatoren
-  setSvgFont('txtIst',  Math.round(s * 0.16 * fs)); // vorher ~0.18
-  setSvgFont('txtSoll', Math.round(s * 0.095 * fs)); // vorher ~0.11
+  setSvgFont('txtIst',  Math.round(s * 0.08 * fs)); // vorher ~0.18
+  setSvgFont('txtSoll', Math.round(s * 0.05 * fs)); // vorher ~0.11
 
   // Betriebsart & Ventil-Text kleiner
   document.getElementById('mode').style.fontSize      = (s * 0.055 * fs).toFixed(1) + 'px'; // vorher ~0.065
