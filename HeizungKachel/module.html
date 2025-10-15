@@ -4,32 +4,33 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-  /* Kachel (responsive) */
+  /* Kachel */
   .tile{
-    width:200px;height:200px; /* Kachelgröße – kann die Visualisierung skalieren */
-    padding:8px 10px;background:transparent;color:#1A202C;
+    width:200px;height:200px; /* kann die Visualisierung skalieren */
+    padding:8px 10px;background:transparent;color:inherit;
     display:grid;grid-auto-rows:max-content;align-content:center;justify-items:center;gap:6px;text-align:center
   }
-  .row{display:flex;gap:8px;align-items:center;justify-content:center}
-  .btn{border:1px solid #E2E8F0;background:transparent;border-radius:8px;padding:4px 10px;cursor:pointer}
+  .row{display:flex;gap:10px;align-items:center;justify-content:center}
+  .btn{border:1px solid rgba(0,0,0,.15);background:transparent;border-radius:8px;padding:4px 12px;cursor:pointer;color:inherit}
   .btn:active{transform:translateY(1px)}
 
   /* SVG-Arc */
   .arc{width:78%}
   svg{width:100%;height:auto;display:block}
-  .bg{fill:none;stroke:#E2E8F0;stroke-width:8}
-  .fg{fill:none;stroke:#3182CE;stroke-width:8;stroke-linecap:round;transition:stroke-dasharray .15s ease}
-  .knob{fill:#3182CE;stroke:#fff;stroke-width:2}
-  .txt-ist{font-weight:700}
-  .txt-soll{font-weight:600;opacity:.9}
-  .txt-mode{fill:#4A5568;font-weight:600}
+  /* Defaults – werden per JS (inline styles) überschrieben */
+  .bg{fill:none;stroke:currentColor;stroke-opacity:.15;stroke-width:8}
+  .fg{fill:none;stroke-width:8;stroke-linecap:round;transition:stroke-dasharray .15s ease}
+  .knob{stroke:#fff;stroke-width:2}
+
+  /* SVG-Texte mit Systemfarbe */
+  .txt-ist{fill:currentColor;font-weight:700}
+  .txt-soll{fill:currentColor;font-weight:600;opacity:.9}
 </style>
 </head>
 <body>
   <div id="tile" class="tile">
-    <!-- ¾-Kreis: Stellgröße-Anzeige (nicht interaktiv) -->
-    <div class="arc">
-      <svg id="arc" viewBox="0 0 100 100" aria-label="Heizungsstatus">
+    <div class="arc" aria-label="Heizungsstatus">
+      <svg id="arc" viewBox="0 0 100 100">
         <defs>
           <linearGradient id="arcGrad" gradientUnits="userSpaceOnUse"
                           x1="14" y1="50" x2="86" y2="50"
@@ -38,39 +39,45 @@
             <stop id="gStop2" offset="100%" stop-color="#3182CE"/>
           </linearGradient>
         </defs>
-        <!-- Hintergrundbogen (¾-Kreis, unten offen) -->
+
+        <!-- ¾-Kreis (unten offen) -->
         <circle class="bg" cx="50" cy="50" r="36" pathLength="360"
                 stroke-dasharray="270 90" transform="rotate(135 50 50)"></circle>
-        <!-- Füllung = Stellgröße (0..270°) -->
+
+        <!-- Füllung = Stellgröße -->
         <circle id="fill" class="fg" cx="50" cy="50" r="36" pathLength="360"
                 stroke-dasharray="0 360" transform="rotate(135 50 50)" stroke="url(#arcGrad)"></circle>
-        <!-- Punkt (auf Bogen) -->
+
+        <!-- Punkt -->
         <circle id="knob" class="knob" cx="50" cy="14" r="4" />
 
-        <!-- Zentrum: Ist/Soll übereinander -->
+        <!-- Zentrum: Ist / Soll -->
         <text id="txtIst"  class="txt-ist"  x="50" y="45" text-anchor="middle">–.–°C</text>
         <text id="txtSoll" class="txt-soll" x="50" y="58" text-anchor="middle">–.–°C</text>
       </svg>
     </div>
 
-    <!-- Betriebsart unterhalb des Bogens -->
-    <div id="mode" style="font-size:12px;color:#4A5568;font-weight:600">–</div>
+    <!-- Betriebsart -->
+    <div id="mode" style="font-weight:600;opacity:.7;color:inherit">–</div>
 
-    <!-- +/- Taster für Sollverschiebung -->
+    <!-- +/- Taster und Ventiltext -->
     <div class="row">
       <button class="btn" id="btnMinus">−</button>
-      <div id="stellText" style="font-size:12px;color:#4A5568">Ventil: –%</div>
+      <div id="stellText" style="opacity:.7;color:inherit">Ventil: –%</div>
       <button class="btn" id="btnPlus">+</button>
     </div>
   </div>
 
 <script>
-  // Soll-Parameter (ggf. anpassen)
-  const SL_MIN = 5, SL_MAX = 30, SL_STEP = 0.5;
+  // Werte kommen aus dem Modul (siehe style.sp.*)
+  let state = {
+    ist:null, soll:null, stell:0, mode:'',
+    style:{ aw:8, fg1:'#3182CE', fg2:'#3182CE', bg:'currentColor', knob:'#3182CE', fs:1.0,
+            sp:{min:5, max:30, step:0.5} },
+    size:200
+  };
 
-  let state = { ist:null, soll:null, stell:0, mode:'', style:null, size:200 };
-
-  // ===== Responsive: Schriftgrößen & Strichstärken je nach Kachelgröße =====
+  // === Responsive Sizing ===
   const tile = document.getElementById('tile');
   const ro = new ResizeObserver(entries => {
     const s = Math.min(tile.clientWidth, tile.clientHeight) || 200;
@@ -80,40 +87,55 @@
   ro.observe(tile);
 
   function applySizing(){
-    const s = state.size; // z. B. 200
-    // Fonts im SVG (in px)
-    setSvgFont('txtIst',  Math.round(s * 0.18)); // ~36px bei 200
-    setSvgFont('txtSoll', Math.round(s * 0.11)); // ~22px bei 200
-    // Betriebsart & Ventil-Text (HTML)
-    document.getElementById('mode').style.fontSize = (s*0.06).toFixed(1)+'px';
-    document.getElementById('stellText').style.fontSize = (s*0.06).toFixed(1)+'px';
+    const s = state.size;
+    const fs = Number(state.style?.fs ?? 1.0);
 
-    // Bogenbreite relativ zur Kachelgröße:
-    // ArcWidth ist die Basis bei 200px → skaliert proportional
-    const base = (state.style && state.style.aw) ? Number(state.style.aw) : 8;
+    // Schriftgrößen (skalieren mit Kachelgröße und FontScale)
+    setSvgFont('txtIst',  Math.round(s * 0.18 * fs)); // ~36px bei 200
+    setSvgFont('txtSoll', Math.round(s * 0.11 * fs)); // ~22px bei 200
+    document.getElementById('mode').style.fontSize      = (s*0.06*fs).toFixed(1)+'px';
+    document.getElementById('stellText').style.fontSize = (s*0.06*fs).toFixed(1)+'px';
+
+    // Bogenbreite proportional (ArcWidth ist Basis bei 200px)
+    const base = Number(state.style?.aw ?? 8);
     const aw = Math.max(2, base * (s/200));
     document.querySelectorAll('.bg').forEach(el => el.style.strokeWidth = aw+'px');
     document.querySelectorAll('.fg').forEach(el => el.style.strokeWidth = aw+'px');
+
+    // Knopfgröße passend zur Bogenbreite
     document.getElementById('knob').setAttribute('r', Math.max(3, Math.round(aw*0.55)));
   }
 
   function setSvgFont(id, px){
     const el = document.getElementById(id);
-    if (el) el.setAttribute('font-size', px);
+    if (el) el.setAttribute('font-size', String(px));
   }
 
-  // ===== Werte vom Modul =====
+  // === Daten vom Modul ===
   function handleMessage(payload){
     try{ var d = (typeof payload==='string')? JSON.parse(payload) : payload; } catch(e){ return; }
 
+    // Style übernehmen
+    if (d.style){
+      state.style.aw   = Number(d.style.aw  ?? state.style.aw);
+      state.style.fg1  = String(d.style.fg1 ?? state.style.fg1);
+      state.style.fg2  = String(d.style.fg2 ?? state.style.fg2);
+      state.style.bg   = String(d.style.bg  ?? state.style.bg);
+      state.style.knob = String(d.style.knob?? state.style.knob);
+      state.style.fs   = Number(d.style.fs  ?? state.style.fs);
+      if (d.style.sp){
+        state.style.sp.min  = Number(d.style.sp.min  ?? state.style.sp.min);
+        state.style.sp.max  = Number(d.style.sp.max  ?? state.style.sp.max);
+        state.style.sp.step = Math.max(0.1, Number(d.style.sp.step ?? state.style.sp.step));
+      }
+      applyDesign();
+    }
+
+    // Werte
     state.ist   = toNum(d.ist);
     state.soll  = toNum(d.soll);
     state.stell = clamp(toNum(d.stell) ?? 0, 0, 100);
     state.mode  = (d.mode!=null)? String(d.mode) : '';
-    state.style = d.style || null;
-
-    // Farben/Design aus der Konfiguration anwenden
-    applyDesign();
 
     // Texte
     setTextSVG('txtIst',  fmtTemp(state.ist));
@@ -121,52 +143,52 @@
     document.getElementById('mode').textContent = (state.mode && state.mode.trim()!=='') ? state.mode : '–';
     document.getElementById('stellText').textContent = 'Ventil: ' + (isFinite(state.stell) ? Math.round(state.stell)+'%' : '–%');
 
-    // Bogen = Stellgröße
+    // Bogen zeigt Stellgröße
     setArcFromStell(state.stell);
 
-    // Größen ggf. neu anwenden (falls Tile grade gemessen wurde)
+    // Sizing (falls Kachel gerade neu bemessen)
     applySizing();
   }
 
   function applyDesign(){
-    const fg1 = (state.style && state.style.fg1)  ? state.style.fg1  : '#3182CE';
-    const fg2 = (state.style && state.style.fg2)  ? state.style.fg2  : fg1;
-    const bg  = (state.style && state.style.bg)   ? state.style.bg   : '#E2E8F0';
-    const knob= (state.style && state.style.knob) ? state.style.knob : fg2;
-
-    // Hintergrund
-    document.querySelectorAll('.bg').forEach(el => { el.style.stroke = bg; });
-    // Verlauf
-    document.getElementById('gStop1').setAttribute('stop-color', fg1);
-    document.getElementById('gStop2').setAttribute('stop-color', fg2);
+    // Hintergrundfarbe (Theme über "currentColor" möglich)
+    document.querySelectorAll('.bg').forEach(el => el.style.stroke = state.style.bg);
+    // Verlauf für Vordergrund
+    document.getElementById('gStop1').setAttribute('stop-color', state.style.fg1);
+    document.getElementById('gStop2').setAttribute('stop-color', state.style.fg2);
     // Punktfarbe
-    document.getElementById('knob').style.fill = knob;
+    document.getElementById('knob').style.fill = state.style.knob || state.style.fg2;
   }
 
-  // Bogen = Stellgröße 0..100 (%)
+  // === Bogen nach Stellgröße (0..100 %) ===
   const fill = document.getElementById('fill');
   const knob = document.getElementById('knob');
   function setArcFromStell(stell){
     const deg = clamp(270 * (stell/100), 0, 270);
     fill.setAttribute('stroke-dasharray', deg + ' ' + (360 - deg));
-
-    const angle = (135 + deg) * Math.PI/180; // 135° Start
+    const angle = (135 + deg) * Math.PI/180;
     const r = 36, cx = 50 + r * Math.cos(angle), cy = 50 + r * Math.sin(angle);
     knob.setAttribute('cx', cx.toFixed(2));
     knob.setAttribute('cy', cy.toFixed(2));
   }
 
-  // +/- Buttons (Sollverschiebung)
+  // === +/- Taster für Sollwert ===
   const btnMinus = document.getElementById('btnMinus');
   const btnPlus  = document.getElementById('btnPlus');
-  btnMinus.onclick = ()=> nudgeSetpoint(-SL_STEP);
-  btnPlus.onclick  = ()=> nudgeSetpoint(+SL_STEP);
+  btnMinus.onclick = ()=> nudgeSetpoint(-1);
+  btnPlus.onclick  = ()=> nudgeSetpoint(+1);
 
-  function nudgeSetpoint(delta){
-    const current = (state.soll!=null) ? Number(state.soll) : 20;
-    let next = clamp(quantize(current + delta, SL_STEP), SL_MIN, SL_MAX);
-    setTextSVG('txtSoll', fmtTemp(next)); // Vorschau
-    requestAction('Setpoint', next);      // Schreiben
+  function nudgeSetpoint(dir){
+    const min  = Number(state.style?.sp?.min  ?? 5);
+    const max  = Number(state.style?.sp?.max  ?? 30);
+    const step = Number(state.style?.sp?.step ?? 0.5);
+    const cur  = (state.soll!=null) ? Number(state.soll) : (min+max)/2;
+
+    let next = quantize(cur + dir*step, step);
+    next = clamp(next, min, max);
+
+    setTextSVG('txtSoll', fmtTemp(next)); // sofortige Vorschau
+    requestAction('Setpoint', next);      // schreiben
   }
 
   // Utils
@@ -179,8 +201,5 @@
   // Start
   requestAction('Refresh', 0);
 </script>
-</body>
-</html>
-
 </body>
 </html>
