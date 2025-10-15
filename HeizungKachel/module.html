@@ -21,6 +21,22 @@
   .fg{fill:none;stroke-width:8;stroke-linecap:round;transition:stroke-dasharray .15s ease}
   .knob{stroke:#fff;stroke-width:2}
 
+/* Texte nehmen jetzt 1:1 die Theme-Farbe (wie Ist/Soll) */
+#mode{ color: inherit; font-weight:600; margin-top:-4px; }     /* keine opacity mehr */
+#stellText{ color: inherit; }                                  /* keine opacity mehr */
+
+/* Buttons: Schrift + Rahmen aus Theme-Farbe, transparenter Hintergrund */
+.btn{
+  color: inherit;
+  border: 1px solid currentColor;   /* statt fixer grauer Farbe */
+  background: transparent;
+  border-radius: 8px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.btn:active{ transform: translateY(1px); }
+
+ 
   .txt-ist{fill:currentColor;font-weight:700}
   .txt-soll{fill:currentColor;font-weight:600;opacity:.9}
 
@@ -64,7 +80,7 @@
     <!-- Ventil + +/- Taster (näher am Bogen) -->
     <div class="row row-buttons">
       <button class="btn" id="btnMinus">−</button>
-      <div id="stellText" style="opacity:.7;color:inherit">Ventil: –%</div>
+      <div id="stellText">Ventil: –%</div>
       <button class="btn" id="btnPlus">+</button>
     </div>
   </div>
