@@ -16,24 +16,16 @@ class HeizungKachel extends IPSModule
         $this->RegisterPropertyInteger('Decimals', 1);
 
         // Design
-        $this->RegisterPropertyInteger('ArcWidth', 8);                 // Basis-Strichstärke bei 200px Kachel
-        $this->RegisterPropertyString('ArcColorStart', '#3182CE');     // Verlauf Start
-        $this->RegisterPropertyString('ArcColorEnd',   '#3182CE');     // Verlauf Ende (=Start => einfarbig)
-        $this->RegisterPropertyString('ArcBgColor',    'currentColor'); // Hintergrund Bogen (Theme-Farbe)
-        $this->RegisterPropertyString('ArcKnobColor',  '#3182CE');     // Punkt auf dem Bogen
-        $this->RegisterPropertyFloat('FontScale', 1.0);                // Schrift-Skalierung (zusätzlich zur Kachelgröße)
+        $this->RegisterPropertyInteger('ArcWidth', 8);
+        $this->RegisterPropertyString('ArcColorStart', '#3182CE');
+        $this->RegisterPropertyString('ArcColorEnd',   '#3182CE');
+        $this->RegisterPropertyString('ArcBgColor',    'currentColor');
+        $this->RegisterPropertyString('ArcKnobColor',  '#3182CE');
+        $this->RegisterPropertyFloat('FontScale', 1.0);
 
-        // Sollwert-Parameter
-        $this->RegisterPropertyFloat('SetpointMin', 5.0);
-        $this->RegisterPropertyFloat('SetpointMax', 30.0);
-        $this->RegisterPropertyFloat('SetpointStep', 0.5);
-
-        // HTML-SDK aktivieren (abwärtskompatibel)
         if (method_exists($this, 'SetVisualizationType')) {
             $this->SetVisualizationType(1);
         }
-
-        // Fallback für Message-Deregistrierung
         $this->RegisterAttributeString('MsgIDs', '[]');
     }
 
@@ -41,14 +33,9 @@ class HeizungKachel extends IPSModule
     {
         parent::ApplyChanges();
 
-        // Alte Registrierungen entfernen
-        $old = json_decode($this->ReadAttributeString('MsgIDs'), true);
-        if (!is_array($old)) { $old = []; }
-        foreach ($old as $oid) {
-            @ $this->UnregisterMessage((int)$oid, VM_UPDATE);
-        }
+        $old = json_decode($this->ReadAttributeString('MsgIDs'), true) ?: [];
+        foreach ($old as $oid) { @ $this->UnregisterMessage((int)$oid, VM_UPDATE); }
 
-        // Neue Registrierungen
         $newMsgIDs = [];
         foreach (['VarIst','VarSoll','VarStell','VarMode'] as $prop) {
             $id = (int)$this->ReadPropertyInteger($prop);
@@ -60,16 +47,13 @@ class HeizungKachel extends IPSModule
         }
         $this->WriteAttributeString('MsgIDs', json_encode(array_values(array_unique($newMsgIDs))));
 
-        // Status
         $this->SetStatus($this->isConfigured() ? 102 : 104);
-
-        // Initiale Daten pushen
         $this->PushState();
     }
 
     public function GetConfigurationForm()
     {
-        $form = [
+        return json_encode([
             'elements' => [
                 [
                     'type' => 'ExpansionPanel', 'caption' => 'Allgemein',
@@ -98,14 +82,6 @@ class HeizungKachel extends IPSModule
                         [ 'type' => 'ValidationTextBox', 'name' => 'ArcKnobColor',  'caption' => 'Punktfarbe (z. B. #3182CE)' ],
                     ]
                 ],
-                [
-                    'type' => 'ExpansionPanel', 'caption' => 'Sollwert',
-                    'items' => [
-                        [ 'type' => 'NumberSpinner', 'name' => 'SetpointMin',  'caption' => 'Minimum (°C)', 'digits' => 1, 'minimum' => -20, 'maximum' => 60 ],
-                        [ 'type' => 'NumberSpinner', 'name' => 'SetpointMax',  'caption' => 'Maximum (°C)', 'digits' => 1, 'minimum' => -20, 'maximum' => 60 ],
-                        [ 'type' => 'NumberSpinner', 'name' => 'SetpointStep', 'caption' => 'Schrittweite (°C)', 'digits' => 1, 'minimum' => 0.1, 'maximum' => 5.0 ],
-                    ]
-                ],
             ],
             'actions' => [
                 [ 'type' => 'Button', 'caption' => 'Jetzt aktualisieren', 'onClick' => "IPS_RequestAction(\$id, 'Refresh', 0);" ],
@@ -116,8 +92,7 @@ class HeizungKachel extends IPSModule
                 [ 'code' => 102, 'icon' => 'active',   'caption' => 'Aktiv' ],
                 [ 'code' => 104, 'icon' => 'error',    'caption' => 'Bitte Variablen auswählen (mind. Ist & Soll).' ]
             ]
-        ];
-        return json_encode($form);
+        ]);
     }
 
     public function GetVisualizationTile(): string
@@ -130,12 +105,9 @@ class HeizungKachel extends IPSModule
         switch ($Ident) {
             case 'Setpoint':
                 $var = (int)$this->ReadPropertyInteger('VarSoll');
-                if ($var > 0) {
-                    @RequestAction($var, (float)$Value);
-                }
+                if ($var > 0) { @RequestAction($var, (float)$Value); }
                 $this->PushState();
                 break;
-
             case 'Refresh':
                 $this->PushState();
                 break;
@@ -150,30 +122,19 @@ class HeizungKachel extends IPSModule
         $idSt   = (int)$this->ReadPropertyInteger('VarStell');
         $idMode = (int)$this->ReadPropertyInteger('VarMode');
 
-        // Design & Interaktion
         $style = [
             'aw'   => max(2, (int)$this->ReadPropertyInteger('ArcWidth')),
             'fg1'  => $this->sanitizeColor($this->ReadPropertyString('ArcColorStart')),
             'fg2'  => $this->sanitizeColor($this->ReadPropertyString('ArcColorEnd')),
             'bg'   => $this->sanitizeColor($this->ReadPropertyString('ArcBgColor')),
             'knob' => $this->sanitizeColor($this->ReadPropertyString('ArcKnobColor')),
-            'fs'   => max(0.5, (float)$this->ReadPropertyFloat('FontScale')),
-            'sp'   => [
-                'min'  => (float)$this->ReadPropertyFloat('SetpointMin'),
-                'max'  => (float)$this->ReadPropertyFloat('SetpointMax'),
-                'step' => max(0.1, (float)$this->ReadPropertyFloat('SetpointStep')),
-            ]
+            'fs'   => max(0.5, (float)$this->ReadPropertyFloat('FontScale'))
         ];
-
-        // Grenzen korrigieren, falls falsch herum
-        if ($style['sp']['max'] < $style['sp']['min']) {
-            [$style['sp']['min'], $style['sp']['max']] = [$style['sp']['max'], $style['sp']['min']];
-        }
 
         $data = [
             'ist'   => $idIst  ? round((float)GetValue($idIst),  $dec) : null,
             'soll'  => $idSoll ? round((float)GetValue($idSoll), $dec) : null,
-            'stell' => $idSt   ? (float)GetValue($idSt) : null, // 0..100
+            'stell' => $idSt   ? (float)GetValue($idSt) : null,
             'mode'  => $idMode ? GetValueFormatted($idMode) : null,
             'style' => $style
         ];
@@ -183,9 +144,7 @@ class HeizungKachel extends IPSModule
 
     public function MessageSink($TimeStamp, $SenderID, $Message, $Data)
     {
-        if ($Message === VM_UPDATE) {
-            $this->PushState();
-        }
+        if ($Message === VM_UPDATE) { $this->PushState(); }
     }
 
     private function isConfigured(): bool
@@ -200,7 +159,6 @@ class HeizungKachel extends IPSModule
         if ($c === '') return '#000000';
         if ($c[0] === '#') return strtoupper($c);
         if (preg_match('/^[0-9A-Fa-f]{6}$/', $c)) return '#'.strtoupper($c);
-        // keywords/rgb()/hsl()/currentColor erlauben
         return $c;
     }
 }
