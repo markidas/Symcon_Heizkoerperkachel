@@ -89,24 +89,27 @@
   ro.observe(tile);
 
   function applySizing(){
-    const s  = state.size;
-    const fs = Number(state.style?.fs ?? 1.0);
+  const s  = state.size;
+  const fs = Number(state.style?.fs ?? 1.0); // kannst du lassen – Basisgröße ist jetzt kleiner
 
-    // Schriftgrößen (Faktor hier anpassen, wenn "Betriebsart" größer/kleiner soll)
-    setSvgFont('txtIst',  Math.round(s * 0.18 * fs));
-    setSvgFont('txtSoll', Math.round(s * 0.11 * fs));
-    document.getElementById('mode').style.fontSize      = (s * 0.065 * fs).toFixed(1) + 'px';  // <— HIER die Betriebsart-Größe
-    document.getElementById('stellText').style.fontSize = (s * 0.06  * fs).toFixed(1) + 'px';
+  // ↓ kleinere Basis-Multiplikatoren
+  setSvgFont('txtIst',  Math.round(s * 0.16 * fs)); // vorher ~0.18
+  setSvgFont('txtSoll', Math.round(s * 0.095 * fs)); // vorher ~0.11
 
-    // Bogenbreite proportional (ArcWidth ist Basis bei 200px)
-    const base = Number(state.style?.aw ?? 8);
-    const aw = Math.max(2, base * (s/200));
-    document.querySelectorAll('.bg').forEach(el => el.style.strokeWidth = aw+'px');
-    document.querySelectorAll('.fg').forEach(el => el.style.strokeWidth = aw+'px');
+  // Betriebsart & Ventil-Text kleiner
+  document.getElementById('mode').style.fontSize      = (s * 0.055 * fs).toFixed(1) + 'px'; // vorher ~0.065
+  document.getElementById('stellText').style.fontSize = (s * 0.050 * fs).toFixed(1) + 'px'; // vorher ~0.06
 
-    // Knopfgröße passend zur Bogenbreite
-    document.getElementById('knob').setAttribute('r', Math.max(3, Math.round(aw*0.55)));
-  }
+  // Bogenbreite proportional (unverändert)
+  const base = Number(state.style?.aw ?? 8);
+  const aw = Math.max(2, base * (s/200));
+  document.querySelectorAll('.bg').forEach(el => el.style.strokeWidth = aw+'px');
+  document.querySelectorAll('.fg').forEach(el => el.style.strokeWidth = aw+'px');
+
+  // Knopfgröße passend zur Bogenbreite
+  document.getElementById('knob').setAttribute('r', Math.max(3, Math.round(aw*0.55)));
+}
+
 
   function setSvgFont(id, px){
     const el = document.getElementById(id);
