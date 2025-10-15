@@ -41,8 +41,8 @@
   .txt-soll{fill:currentColor;font-weight:600;opacity:.9}
 
   /* Feinsteuerung der vertikalen Abstände unterhalb des Bogens */
-  #mode{ margin-top:-10px; font-weight:600; opacity:.7; color:inherit }
-  .row-buttons{ margin-top:-8px; } /* Ventil + +/- näher an den Bogen */
+  #mode{ margin-top:-20px; font-weight:600; opacity:.7; color:inherit }
+  .row-buttons{ margin-top:-18px; } /* Ventil + +/- näher an den Bogen */
 </style>
 </head>
 <body>
@@ -58,11 +58,11 @@
           </linearGradient>
         </defs>
 
-        <circle id="ringBg" class="bg" cx="50" cy="50" r="36"
+        <circle id="ringBg" class="bg" cx="50" cy="50" r="60"
                 pathLength="360" stroke-dasharray="270 90"
                 transform="rotate(135 50 50)"></circle>
 
-        <circle id="ringFg" class="fg" cx="50" cy="50" r="36"
+        <circle id="ringFg" class="fg" cx="50" cy="50" r="60"
                 pathLength="360" stroke-dasharray="0 360"
                 transform="rotate(135 50 50)" stroke="url(#arcGrad)"></circle>
 
@@ -92,7 +92,7 @@
   let state = {
     ist:null, soll:null, stell:0, mode:'',
     style:{ aw:8, fg1:'#3182CE', fg2:'#3182CE', bg:'currentColor', knob:'#3182CE', fs:1.0 },
-    size:200, ARC_R:36
+    size:200, ARC_R:60
   };
 
   // === Responsive Sizing ===
