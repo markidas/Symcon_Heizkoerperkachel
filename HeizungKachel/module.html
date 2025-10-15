@@ -41,11 +41,11 @@
         </defs>
 
         <!-- ¾-Kreis (unten offen) -->
-        <circle class="bg" cx="50" cy="50" r="36" pathLength="360"
+        <circle class="bg" cx="50" cy="50" r="45" pathLength="360"
                 stroke-dasharray="270 90" transform="rotate(135 50 50)"></circle>
 
         <!-- Füllung = Stellgröße -->
-        <circle id="fill" class="fg" cx="50" cy="50" r="36" pathLength="360"
+        <circle id="fill" class="fg" cx="50" cy="50" r="45" pathLength="360"
                 stroke-dasharray="0 360" transform="rotate(135 50 50)" stroke="url(#arcGrad)"></circle>
 
         <!-- Punkt -->
@@ -167,7 +167,7 @@
     const deg = clamp(270 * (stell/100), 0, 270);
     fill.setAttribute('stroke-dasharray', deg + ' ' + (360 - deg));
     const angle = (135 + deg) * Math.PI/180;
-    const r = 36, cx = 50 + r * Math.cos(angle), cy = 50 + r * Math.sin(angle);
+    const r = 45, cx = 50 + r * Math.cos(angle), cy = 50 + r * Math.sin(angle);
     knob.setAttribute('cx', cx.toFixed(2));
     knob.setAttribute('cy', cy.toFixed(2));
   }
