@@ -4,27 +4,29 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-  /* Kachel */
   .tile{
-    width:200px;height:200px; /* kann die Visualisierung skalieren */
+    width:200px;height:200px;
     padding:8px 10px;background:transparent;color:inherit;
-    display:grid;grid-auto-rows:max-content;align-content:center;justify-items:center;gap:6px;text-align:center
+    display:grid;grid-auto-rows:max-content;align-content:center;justify-items:center;
+    gap:4px; /* kleineres Gap => alles rückt zusammen */
+    text-align:center
   }
   .row{display:flex;gap:10px;align-items:center;justify-content:center}
   .btn{border:1px solid rgba(0,0,0,.15);background:transparent;border-radius:8px;padding:4px 12px;cursor:pointer;color:inherit}
   .btn:active{transform:translateY(1px)}
 
-  /* SVG-Arc */
   .arc{width:78%}
   svg{width:100%;height:auto;display:block}
-  /* Defaults – werden per JS (inline styles) überschrieben */
   .bg{fill:none;stroke:currentColor;stroke-opacity:.15;stroke-width:8}
   .fg{fill:none;stroke-width:8;stroke-linecap:round;transition:stroke-dasharray .15s ease}
   .knob{stroke:#fff;stroke-width:2}
 
-  /* SVG-Texte mit Systemfarbe */
   .txt-ist{fill:currentColor;font-weight:700}
   .txt-soll{fill:currentColor;font-weight:600;opacity:.9}
+
+  /* Feinsteuerung der vertikalen Abstände unterhalb des Bogens */
+  #mode{ margin-top:-4px; font-weight:600; opacity:.7; color:inherit }
+  .row-buttons{ margin-top:-2px; } /* Ventil + +/- näher an den Bogen */
 </style>
 </head>
 <body>
@@ -40,28 +42,27 @@
           </linearGradient>
         </defs>
 
-        <!-- ¾-Kreis (unten offen) -->
-        <circle class="bg" cx="50" cy="50" r="45" pathLength="360"
-                stroke-dasharray="270 90" transform="rotate(135 50 50)"></circle>
+        <circle id="ringBg" class="bg" cx="50" cy="50" r="36"
+                pathLength="360" stroke-dasharray="270 90"
+                transform="rotate(135 50 50)"></circle>
 
-        <!-- Füllung = Stellgröße -->
-        <circle id="fill" class="fg" cx="50" cy="50" r="45" pathLength="360"
-                stroke-dasharray="0 360" transform="rotate(135 50 50)" stroke="url(#arcGrad)"></circle>
+        <circle id="ringFg" class="fg" cx="50" cy="50" r="36"
+                pathLength="360" stroke-dasharray="0 360"
+                transform="rotate(135 50 50)" stroke="url(#arcGrad)"></circle>
 
-        <!-- Punkt -->
         <circle id="knob" class="knob" cx="50" cy="14" r="4" />
 
-        <!-- Zentrum: Ist / Soll -->
-        <text id="txtIst"  class="txt-ist"  x="50" y="45" text-anchor="middle">–.–°C</text>
-        <text id="txtSoll" class="txt-soll" x="50" y="58" text-anchor="middle">–.–°C</text>
+        <!-- HÖHER positioniert -->
+        <text id="txtIst"  class="txt-ist"  x="50" y="42" text-anchor="middle">–.–°C</text>
+        <text id="txtSoll" class="txt-soll" x="50" y="54" text-anchor="middle">–.–°C</text>
       </svg>
     </div>
 
-    <!-- Betriebsart -->
-    <div id="mode" style="font-weight:600;opacity:.7;color:inherit">–</div>
+    <!-- Betriebsart (näher am Bogen) -->
+    <div id="mode">–</div>
 
-    <!-- +/- Taster und Ventiltext -->
-    <div class="row">
+    <!-- Ventil + +/- Taster (näher am Bogen) -->
+    <div class="row row-buttons">
       <button class="btn" id="btnMinus">−</button>
       <div id="stellText" style="opacity:.7;color:inherit">Ventil: –%</div>
       <button class="btn" id="btnPlus">+</button>
@@ -69,12 +70,13 @@
   </div>
 
 <script>
-  // Werte kommen aus dem Modul (siehe style.sp.*)
+  // Schrittweite (+/-), fix (Min/Max entfallen)
+  const STEP = 0.5;
+
   let state = {
     ist:null, soll:null, stell:0, mode:'',
-    style:{ aw:8, fg1:'#3182CE', fg2:'#3182CE', bg:'currentColor', knob:'#3182CE', fs:1.0,
-            sp:{min:5, max:30, step:0.5} },
-    size:200
+    style:{ aw:8, fg1:'#3182CE', fg2:'#3182CE', bg:'currentColor', knob:'#3182CE', fs:1.0 },
+    size:200, ARC_R:36
   };
 
   // === Responsive Sizing ===
@@ -87,14 +89,14 @@
   ro.observe(tile);
 
   function applySizing(){
-    const s = state.size;
+    const s  = state.size;
     const fs = Number(state.style?.fs ?? 1.0);
 
-    // Schriftgrößen (skalieren mit Kachelgröße und FontScale)
-    setSvgFont('txtIst',  Math.round(s * 0.18 * fs)); // ~36px bei 200
-    setSvgFont('txtSoll', Math.round(s * 0.11 * fs)); // ~22px bei 200
-    document.getElementById('mode').style.fontSize      = (s*0.06*fs).toFixed(1)+'px';
-    document.getElementById('stellText').style.fontSize = (s*0.06*fs).toFixed(1)+'px';
+    // Schriftgrößen (Faktor hier anpassen, wenn "Betriebsart" größer/kleiner soll)
+    setSvgFont('txtIst',  Math.round(s * 0.18 * fs));
+    setSvgFont('txtSoll', Math.round(s * 0.11 * fs));
+    document.getElementById('mode').style.fontSize      = (s * 0.065 * fs).toFixed(1) + 'px';  // <— HIER die Betriebsart-Größe
+    document.getElementById('stellText').style.fontSize = (s * 0.06  * fs).toFixed(1) + 'px';
 
     // Bogenbreite proportional (ArcWidth ist Basis bei 200px)
     const base = Number(state.style?.aw ?? 8);
@@ -123,11 +125,6 @@
       state.style.bg   = String(d.style.bg  ?? state.style.bg);
       state.style.knob = String(d.style.knob?? state.style.knob);
       state.style.fs   = Number(d.style.fs  ?? state.style.fs);
-      if (d.style.sp){
-        state.style.sp.min  = Number(d.style.sp.min  ?? state.style.sp.min);
-        state.style.sp.max  = Number(d.style.sp.max  ?? state.style.sp.max);
-        state.style.sp.step = Math.max(0.1, Number(d.style.sp.step ?? state.style.sp.step));
-      }
       applyDesign();
     }
 
@@ -146,49 +143,37 @@
     // Bogen zeigt Stellgröße
     setArcFromStell(state.stell);
 
-    // Sizing (falls Kachel gerade neu bemessen)
     applySizing();
   }
 
   function applyDesign(){
-    // Hintergrundfarbe (Theme über "currentColor" möglich)
     document.querySelectorAll('.bg').forEach(el => el.style.stroke = state.style.bg);
-    // Verlauf für Vordergrund
     document.getElementById('gStop1').setAttribute('stop-color', state.style.fg1);
     document.getElementById('gStop2').setAttribute('stop-color', state.style.fg2);
-    // Punktfarbe
     document.getElementById('knob').style.fill = state.style.knob || state.style.fg2;
   }
 
-  // === Bogen nach Stellgröße (0..100 %) ===
   const fill = document.getElementById('fill');
   const knob = document.getElementById('knob');
   function setArcFromStell(stell){
     const deg = clamp(270 * (stell/100), 0, 270);
     fill.setAttribute('stroke-dasharray', deg + ' ' + (360 - deg));
     const angle = (135 + deg) * Math.PI/180;
-    const r = 45, cx = 50 + r * Math.cos(angle), cy = 50 + r * Math.sin(angle);
+    const r = state.ARC_R; // Radius des Bogens
+    const cx = 50 + r * Math.cos(angle), cy = 50 + r * Math.sin(angle);
     knob.setAttribute('cx', cx.toFixed(2));
     knob.setAttribute('cy', cy.toFixed(2));
   }
 
-  // === +/- Taster für Sollwert ===
-  const btnMinus = document.getElementById('btnMinus');
-  const btnPlus  = document.getElementById('btnPlus');
-  btnMinus.onclick = ()=> nudgeSetpoint(-1);
-  btnPlus.onclick  = ()=> nudgeSetpoint(+1);
+  // +/- Taster
+  document.getElementById('btnMinus').onclick = ()=> nudgeSetpoint(-STEP);
+  document.getElementById('btnPlus').onclick  = ()=> nudgeSetpoint(+STEP);
 
-  function nudgeSetpoint(dir){
-    const min  = Number(state.style?.sp?.min  ?? 5);
-    const max  = Number(state.style?.sp?.max  ?? 30);
-    const step = Number(state.style?.sp?.step ?? 0.5);
-    const cur  = (state.soll!=null) ? Number(state.soll) : (min+max)/2;
-
-    let next = quantize(cur + dir*step, step);
-    next = clamp(next, min, max);
-
-    setTextSVG('txtSoll', fmtTemp(next)); // sofortige Vorschau
-    requestAction('Setpoint', next);      // schreiben
+  function nudgeSetpoint(delta){
+    const cur  = (state.soll!=null) ? Number(state.soll) : 20;
+    const next = quantize(cur + delta, STEP);
+    setTextSVG('txtSoll', fmtTemp(next)); // Vorschau
+    requestAction('Setpoint', next);      // Schreiben
   }
 
   // Utils
@@ -198,7 +183,6 @@
   function quantize(v, step){ if (!step||step<=0) return v; return Math.round(v/step)*step; }
   function fmtTemp(v){ return (v==null)? '–.–°C' : (Number(v).toFixed(1).replace('.', ',') + '°C'); }
 
-  // Start
   requestAction('Refresh', 0);
 </script>
 </body>
