@@ -7,20 +7,26 @@ class HeizungKachel extends IPSModule
     {
         parent::Create();
 
-        // Daten-Eigenschaften
+        // Daten
         $this->RegisterPropertyString('RoomName', 'Wohnzimmer');
         $this->RegisterPropertyInteger('VarIst', 0);
-        $this->RegisterPropertyInteger('VarSoll', 0);   // mit Variablenaktion
+        $this->RegisterPropertyInteger('VarSoll', 0);   // mit Variablenaktion!
         $this->RegisterPropertyInteger('VarStell', 0);  // 0..100 %
         $this->RegisterPropertyInteger('VarMode', 0);
         $this->RegisterPropertyInteger('Decimals', 1);
 
-        // Design-Eigenschaften (konfigurierbar)
-        $this->RegisterPropertyInteger('ArcWidth', 8);                // Basis bei 200x200 px
-        $this->RegisterPropertyString('ArcColorStart', '#3182CE');    // FG Start
-        $this->RegisterPropertyString('ArcColorEnd',   '#3182CE');    // FG Ende
-        $this->RegisterPropertyString('ArcBgColor',    '#E2E8F0');    // BG Ring
-        $this->RegisterPropertyString('ArcKnobColor',  '#3182CE');    // Punktfarbe
+        // Design
+        $this->RegisterPropertyInteger('ArcWidth', 8);                 // Basis-Strichstärke bei 200px Kachel
+        $this->RegisterPropertyString('ArcColorStart', '#3182CE');     // Verlauf Start
+        $this->RegisterPropertyString('ArcColorEnd',   '#3182CE');     // Verlauf Ende (=Start => einfarbig)
+        $this->RegisterPropertyString('ArcBgColor',    'currentColor'); // Hintergrund Bogen (Theme-Farbe)
+        $this->RegisterPropertyString('ArcKnobColor',  '#3182CE');     // Punkt auf dem Bogen
+        $this->RegisterPropertyFloat('FontScale', 1.0);                // Schrift-Skalierung (zusätzlich zur Kachelgröße)
+
+        // Sollwert-Parameter
+        $this->RegisterPropertyFloat('SetpointMin', 5.0);
+        $this->RegisterPropertyFloat('SetpointMax', 30.0);
+        $this->RegisterPropertyFloat('SetpointStep', 0.5);
 
         // HTML-SDK aktivieren (abwärtskompatibel)
         if (method_exists($this, 'SetVisualizationType')) {
@@ -69,7 +75,8 @@ class HeizungKachel extends IPSModule
                     'type' => 'ExpansionPanel', 'caption' => 'Allgemein',
                     'items' => [
                         [ 'type' => 'ValidationTextBox', 'name' => 'RoomName', 'caption' => 'Raumname' ],
-                        [ 'type' => 'NumberSpinner', 'name' => 'Decimals', 'caption' => 'Nachkommastellen', 'minimum' => 0, 'maximum' => 2 ]
+                        [ 'type' => 'NumberSpinner', 'name' => 'Decimals', 'caption' => 'Nachkommastellen', 'minimum' => 0, 'maximum' => 2 ],
+                        [ 'type' => 'NumberSpinner', 'name' => 'FontScale', 'caption' => 'Schriftfaktor (1.0 = Standard)', 'digits' => 2, 'minimum' => 0.5, 'maximum' => 2.0 ],
                     ]
                 ],
                 [
@@ -78,19 +85,27 @@ class HeizungKachel extends IPSModule
                         [ 'type' => 'SelectVariable', 'name' => 'VarIst',   'caption' => 'Ist-Temperatur (Float)',              'variableType' => 2 ],
                         [ 'type' => 'SelectVariable', 'name' => 'VarSoll',  'caption' => 'Soll-Temperatur (Float, mit Aktion)', 'variableType' => 2 ],
                         [ 'type' => 'SelectVariable', 'name' => 'VarStell', 'caption' => 'Stellgröße 0–100 % (Float/Int)' ],
-                        [ 'type' => 'SelectVariable', 'name' => 'VarMode',  'caption' => 'Betriebsart (String/Int mit Profil)' ]
+                        [ 'type' => 'SelectVariable', 'name' => 'VarMode',  'caption' => 'Betriebsart (String/Int mit Profil)' ],
                     ]
                 ],
                 [
                     'type' => 'ExpansionPanel', 'caption' => 'Design',
                     'items' => [
                         [ 'type' => 'NumberSpinner',     'name' => 'ArcWidth',      'caption' => 'Bogenbreite (Basis bei 200px)', 'minimum' => 2, 'maximum' => 24 ],
-                        [ 'type' => 'ValidationTextBox', 'name' => 'ArcColorStart', 'caption' => 'Vordergrund Startfarbe (#RRGGBB)' ],
-                        [ 'type' => 'ValidationTextBox', 'name' => 'ArcColorEnd',   'caption' => 'Vordergrund Endfarbe (#RRGGBB)' ],
-                        [ 'type' => 'ValidationTextBox', 'name' => 'ArcBgColor',    'caption' => 'Hintergrundfarbe (#RRGGBB)' ],
-                        [ 'type' => 'ValidationTextBox', 'name' => 'ArcKnobColor',  'caption' => 'Punktfarbe (#RRGGBB)' ]
+                        [ 'type' => 'ValidationTextBox', 'name' => 'ArcColorStart', 'caption' => 'Bogen Startfarbe (z. B. #22C55E)' ],
+                        [ 'type' => 'ValidationTextBox', 'name' => 'ArcColorEnd',   'caption' => 'Bogen Endfarbe (z. B. #EF4444)' ],
+                        [ 'type' => 'ValidationTextBox', 'name' => 'ArcBgColor',    'caption' => 'Bogen Hintergrund (z. B. currentColor / #E2E8F0)' ],
+                        [ 'type' => 'ValidationTextBox', 'name' => 'ArcKnobColor',  'caption' => 'Punktfarbe (z. B. #3182CE)' ],
                     ]
-                ]
+                ],
+                [
+                    'type' => 'ExpansionPanel', 'caption' => 'Sollwert',
+                    'items' => [
+                        [ 'type' => 'NumberSpinner', 'name' => 'SetpointMin',  'caption' => 'Minimum (°C)', 'digits' => 1, 'minimum' => -20, 'maximum' => 60 ],
+                        [ 'type' => 'NumberSpinner', 'name' => 'SetpointMax',  'caption' => 'Maximum (°C)', 'digits' => 1, 'minimum' => -20, 'maximum' => 60 ],
+                        [ 'type' => 'NumberSpinner', 'name' => 'SetpointStep', 'caption' => 'Schrittweite (°C)', 'digits' => 1, 'minimum' => 0.1, 'maximum' => 5.0 ],
+                    ]
+                ],
             ],
             'actions' => [
                 [ 'type' => 'Button', 'caption' => 'Jetzt aktualisieren', 'onClick' => "IPS_RequestAction(\$id, 'Refresh', 0);" ],
@@ -135,14 +150,25 @@ class HeizungKachel extends IPSModule
         $idSt   = (int)$this->ReadPropertyInteger('VarStell');
         $idMode = (int)$this->ReadPropertyInteger('VarMode');
 
-        // Designwerte
+        // Design & Interaktion
         $style = [
             'aw'   => max(2, (int)$this->ReadPropertyInteger('ArcWidth')),
             'fg1'  => $this->sanitizeColor($this->ReadPropertyString('ArcColorStart')),
             'fg2'  => $this->sanitizeColor($this->ReadPropertyString('ArcColorEnd')),
             'bg'   => $this->sanitizeColor($this->ReadPropertyString('ArcBgColor')),
-            'knob' => $this->sanitizeColor($this->ReadPropertyString('ArcKnobColor'))
+            'knob' => $this->sanitizeColor($this->ReadPropertyString('ArcKnobColor')),
+            'fs'   => max(0.5, (float)$this->ReadPropertyFloat('FontScale')),
+            'sp'   => [
+                'min'  => (float)$this->ReadPropertyFloat('SetpointMin'),
+                'max'  => (float)$this->ReadPropertyFloat('SetpointMax'),
+                'step' => max(0.1, (float)$this->ReadPropertyFloat('SetpointStep')),
+            ]
         ];
+
+        // Grenzen korrigieren, falls falsch herum
+        if ($style['sp']['max'] < $style['sp']['min']) {
+            [$style['sp']['min'], $style['sp']['max']] = [$style['sp']['max'], $style['sp']['min']];
+        }
 
         $data = [
             'ist'   => $idIst  ? round((float)GetValue($idIst),  $dec) : null,
@@ -174,6 +200,7 @@ class HeizungKachel extends IPSModule
         if ($c === '') return '#000000';
         if ($c[0] === '#') return strtoupper($c);
         if (preg_match('/^[0-9A-Fa-f]{6}$/', $c)) return '#'.strtoupper($c);
+        // keywords/rgb()/hsl()/currentColor erlauben
         return $c;
     }
 }
