@@ -66,7 +66,7 @@ class HeatingTile2 extends IPSModule
             IPS_SetIdent($sid, $ident);
             IPS_SetScriptContent($sid, file_get_contents(__DIR__.'/hook.php'));
         }
-        IPS_SetProperty($sid, 'Hook', $hook); // harmless but keeps info in place
+        
         return $sid;
     }
 
