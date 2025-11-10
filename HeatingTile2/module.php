@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/helper.php';
 
-class HeatingTile extends IPSModule
+class HeatingTile2 extends IPSModule
 {
     use HT_WebHook;
 
