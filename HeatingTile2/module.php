@@ -7,23 +7,26 @@ class HeatingTile2 extends IPSModule
 {
     use HT_WebHook;
 
-    public function Create()
-    {
-        parent::Create();
+    public function GetConfigurationForm()
+{
+    return json_encode([
+        'elements' => [
+            ['type' => 'Label', 'caption' => 'Variablen aus dem Objektbaum auswählen'],
 
-        // Konfigurations-Properties
-        $this->RegisterPropertyInteger('ActualTempVarID', 0);   // Float °C
-        $this->RegisterPropertyInteger('SetpointVarID', 0);     // Float °C
-        $this->RegisterPropertyInteger('ValvePercentVarID', 0); // Float 0..100
-        $this->RegisterPropertyInteger('ModeVarID', 0);         // Integer 0:Frost 1:Standby 2:Komfort
-        $this->RegisterPropertyFloat('SetpointStep', 0.5);
-        $this->RegisterPropertyInteger('Decimals', 1);
-        $this->RegisterPropertyString('HookPath', '/hook/heatingtile'); // Basis-Hook
+            // 2 = Float, 1 = Integer
+            ['type' => 'SelectVariable', 'name' => 'ActualTempVarID',    'caption' => 'Ist-Temperatur (Float °C)',        'variableType' => 2],
+            ['type' => 'SelectVariable', 'name' => 'SetpointVarID',      'caption' => 'Sollwert (Float °C)',              'variableType' => 2],
+            ['type' => 'SelectVariable', 'name' => 'ValvePercentVarID',  'caption' => 'Stellgröße/Valve (Float 0..100%)', 'variableType' => 2],
+            ['type' => 'SelectVariable', 'name' => 'ModeVarID',          'caption' => 'Betriebsart (Integer 0/1/2)',      'variableType' => 1],
 
-        // Visualisierung (HTMLBox)
-        $this->RegisterVariableString('Tile', 'Heizung', '~HTMLBox', 0);
-        IPS_SetHidden($this->GetIDForIdent('Tile'), false);
-    }
+            ['type' => 'NumberSpinner',  'name' => 'SetpointStep', 'caption' => 'Schrittweite Sollwert (°C)', 'digits' => 1, 'minimum' => 0.1],
+            ['type' => 'NumberSpinner',  'name' => 'Decimals',     'caption' => 'Nachkommastellen Temperatur', 'minimum' => 0, 'maximum' => 2],
+            ['type' => 'ValidationTextBox','name'=>'HookPath','caption'=>'WebHook-Basis (z. B. /hook/heatingtile)'],
+
+            ['type' => 'Label', 'caption' => 'Hinweis: Die Kachel erscheint als Variable "~HTMLBox" in der Instanz und kann im WebFront verlinkt werden.']
+        ]
+    ]);
+}
 
     public function ApplyChanges()
     {
