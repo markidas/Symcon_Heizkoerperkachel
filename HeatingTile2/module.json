@@ -1,0 +1,11 @@
+{
+  "id": "{8F5A4F43-0C5C-4C7C-8F62-FA98DBCF1010}",
+  "name": "HeatingTile2",
+  "type": 3,
+  "vendor": "Markidas",
+  "aliases": ["Heizungskachel2"],
+  "parentRequirements": [],
+  "childRequirements": [],
+  "implemented": [],
+  "prefix": "HT2"
+}
