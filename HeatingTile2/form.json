@@ -1,0 +1,29 @@
+{
+  "elements": [
+    { "type": "Label", "caption": "Variablen" },
+    {
+      "name": "VarID_TempIst",
+      "type": "SelectVariable",
+      "caption": "Ist-Temperatur",
+      "variableType": 2
+    },
+    {
+      "name": "VarID_TempSoll",
+      "type": "SelectVariable",
+      "caption": "Soll-Temperatur",
+      "variableType": 2
+    },
+    {
+      "name": "VarID_ValvePercent",
+      "type": "SelectVariable",
+      "caption": "Stellgröße (%)",
+      "variableType": 1
+    },
+    {
+      "name": "VarID_Mode",
+      "type": "SelectVariable",
+      "caption": "Betriebsart",
+      "variableType": 1
+    }
+  ]
+}
