@@ -7,7 +7,7 @@ class HeatingTile2 extends IPSModule
     {
         parent::Create();
 
-        // Konfigurations-Properties (IDs aus dem Objektbaum)
+        // Konfigurations-Properties (per Objektbaum wählbar)
         $this->RegisterPropertyInteger('ActualTempVarID', 0);    // Float °C
         $this->RegisterPropertyInteger('SetpointVarID', 0);      // Float °C
         $this->RegisterPropertyInteger('ValvePercentVarID', 0);  // Float/Int 0..100
@@ -87,7 +87,7 @@ class HeatingTile2 extends IPSModule
         $idV = (int)$this->ReadPropertyInteger('ValvePercentVarID');
         $idM = (int)$this->ReadPropertyInteger('ModeVarID');
 
-        // Wichtig: kein `${...}` innerhalb des HEREDOC verwenden.
+        // Wichtig: im HEREDOC keine JS-Template-Literals (`${...}`) verwenden.
         return <<<HTML
 <style>
 #ht-$iid { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial; }
@@ -97,26 +97,59 @@ class HeatingTile2 extends IPSModule
 #ht-$iid .big { font-size: clamp(18px, 6.8vw, 40px); font-weight: 600; }
 #ht-$iid .mid { font-size: clamp(12px, 3.6vw, 22px); font-weight: 500; opacity: .9; }
 #ht-$iid .muted { opacity: .7; }
+
+/* Farben/Stile für Schieberegler & Bogen */
+#ht-$iid .gAccent { stroke: var(--accent-color, var(--primary, #1fd1b2)); }
+#ht-$iid .gBg { stroke: color-mix(in oklab, var(--accent-color, #1fd1b2), #000 80%); opacity: .35; }
+#ht-$iid .knob {
+  fill: var(--accent-color, var(--primary, #1fd1b2));
+  stroke: var(--tile-bg-contrast, #000);
+  stroke-width: 3;
+  filter: url(#glow-$iid);
+}
+
+/* Buttons */
 #ht-$iid button { border: 0; border-radius: 10px; padding: .4em .7em; font-size: clamp(12px, 3.5vw, 18px); cursor: pointer; background: transparent; color: inherit; }
 #ht-$iid .pill { padding: .5em .6em; border-radius: 8px; }
 #ht-$iid .active { background: var(--accent-color, var(--primary, #1fd1b2)); color: var(--on-accent, #000); }
+
 #ht-$iid .status { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; margin-top: .5rem; }
 #ht-$iid .status .item { text-align: center; border-radius: 10px; padding: .45rem .5rem; background: color-mix(in oklab, var(--background-color, #2f2f35), #fff 6%); }
 #ht-$iid .status .item strong { display:block; }
+
 #ht-$iid svg { width: 100%; height: auto; }
 </style>
 
 <div id="ht-$iid" class="card">
   <div class="gauge">
     <svg viewBox="0 0 300 220" preserveAspectRatio="xMidYMid meet">
-      <path id="bg-$iid" d="M 60 180 A 110 110 0 1 1 240 180"
-            fill="none" stroke="color-mix(in oklab, var(--accent-color, #1fd1b2), #000 70%)"
-            stroke-width="14" stroke-linecap="round"/>
-      <path id="fg-$iid" d="" fill="none"
-            stroke="var(--accent-color, var(--primary, #1fd1b2))"
-            stroke-width="14" stroke-linecap="round"/>
-      <circle id="knob-$iid" cx="240" cy="180" r="12"
-              fill="var(--accent-color, var(--primary, #1fd1b2))" />
+      <defs>
+        <!-- Glow für Knob -->
+        <filter id="glow-$iid" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="b"/>
+          <feMerge>
+            <feMergeNode in="b"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+        <!-- Verlauf für Stellbogen -->
+        <linearGradient id="grad-$iid" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"   stop-color="var(--accent-color, #1fd1b2)" stop-opacity="0.85"/>
+          <stop offset="100%" stop-color="var(--accent-color, #1fd1b2)" stop-opacity="1"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Hintergrundbogen -->
+      <path id="bg-$iid" class="gBg" d="M 60 180 A 110 110 0 1 1 240 180"
+            fill="none" stroke-width="12" stroke-linecap="round"/>
+      <!-- Stellbogen (wird per JS gesetzt) -->
+      <path id="fg-$iid" d="" class="gAccent" fill="none"
+            stroke="url(#grad-$iid)" stroke-width="16" stroke-linecap="round"/>
+      <!-- Drag-Knob (sichtbar) -->
+      <circle id="knob-$iid" class="knob" cx="240" cy="180" r="13"/>
+      <!-- Unsichtbare Trefferfläche für leichteres Draggen -->
+      <circle id="knobHit-$iid" cx="240" cy="180" r="22" fill="transparent" pointer-events="all"/>
+      <!-- Texte -->
       <foreignObject x="0" y="70" width="300" height="140">
         <div xmlns="http://www.w3.org/1999/xhtml" style="display:flex;flex-direction:column;align-items:center;gap:.4rem">
           <div class="big" id="tActual-$iid">{$A}°C</div>
@@ -192,11 +225,16 @@ class HeatingTile2 extends IPSModule
   }
 
   function updateGauge(){
+    // Bogen + Knob
     document.getElementById('fg-' + iid).setAttribute('d', arcPath(st.v));
     var a = angleForPercent(st.v);
     var p = polarToXY(a);
     var knob = document.getElementById('knob-' + iid);
+    var knobHit = document.getElementById('knobHit-' + iid);
     knob.setAttribute('cx', p.x); knob.setAttribute('cy', p.y);
+    knobHit.setAttribute('cx', p.x); knobHit.setAttribute('cy', p.y);
+
+    // Texte
     document.getElementById('tValve-' + iid).textContent = Math.round(st.v) + '%';
     document.getElementById('tActual-' + iid).textContent = st.a.toFixed(dec) + '°C';
     document.getElementById('tSet-' + iid).textContent = st.s.toFixed(dec) + '°C';
@@ -210,7 +248,7 @@ class HeatingTile2 extends IPSModule
     }
   }
 
-  // Drag
+  // Drag – wir erlauben Drag auf gesamter SVG-Fläche + KnobHit
   var svg = document.querySelector('#ht-' + iid + ' svg');
   var dragging = false;
 
@@ -267,10 +305,10 @@ HTML;
             'elements' => [
                 ['type' => 'Label', 'caption' => 'Variablen aus dem Objektbaum auswählen'],
                 // variableType: 2 = Float, 1 = Integer
-                ['type' => 'SelectVariable', 'name' => 'ActualTempVarID',   'caption' => 'Ist-Temperatur (Float °C)',         'variableType' => 2],
-                ['type' => 'SelectVariable', 'name' => 'SetpointVarID',     'caption' => 'Sollwert (Float °C)',               'variableType' => 2],
-                ['type' => 'SelectVariable', 'name' => 'ValvePercentVarID', 'caption' => 'Stellgröße/Valve (Float/Int 0..100%)',  'variableType' => 2],
-                ['type' => 'SelectVariable', 'name' => 'ModeVarID',         'caption' => 'Betriebsart (Integer/Enum)',        'variableType' => 1],
+                ['type' => 'SelectVariable', 'name' => 'ActualTempVarID',   'caption' => 'Ist-Temperatur (Float °C)',            'variableType' => 2],
+                ['type' => 'SelectVariable', 'name' => 'SetpointVarID',     'caption' => 'Sollwert (Float °C)',                  'variableType' => 2],
+                ['type' => 'SelectVariable', 'name' => 'ValvePercentVarID', 'caption' => 'Stellgröße/Valve (Float/Int 0..100%)', 'variableType' => 2],
+                ['type' => 'SelectVariable', 'name' => 'ModeVarID',         'caption' => 'Betriebsart (Integer/Enum)',           'variableType' => 1],
                 ['type' => 'NumberSpinner',  'name' => 'SetpointStep',      'caption' => 'Schrittweite Sollwert (°C)', 'digits' => 1, 'minimum' => 0.1],
                 ['type' => 'NumberSpinner',  'name' => 'Decimals',          'caption' => 'Nachkommastellen Temperatur', 'minimum' => 0, 'maximum' => 2],
                 ['type' => 'Label',          'caption' => 'Die Kachel erscheint als Variable "~HTMLBox" in der Instanz und kann im WebFront verlinkt werden.']
