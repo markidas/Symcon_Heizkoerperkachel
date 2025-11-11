@@ -238,7 +238,8 @@ class HeatingTile2 extends IPSModule
     const p1 = polarToXY(-0.75*PI);
     const p2 = polarToXY(a);
     const large = (pct > 50) ? 1 : 0;
-    return `M ${p1.x} ${p1.y} A ${r} ${r} 0 ${large} 1 ${p2.x} ${p2.y}`;
+    // WICHTIG: keine Template-Literals (PHP würde ${...} fehlinterpretieren)
+    return 'M ' + p1.x + ' ' + p1.y + ' A ' + r + ' ' + r + ' 0 ' + large + ' 1 ' + p2.x + ' ' + p2.y;
   }
 
   function updateGauge(){
@@ -255,7 +256,7 @@ class HeatingTile2 extends IPSModule
     ['mKomfort','mStandby','mFrost'].forEach((id, idx)=>{
       const pill = document.querySelector('#'+id+'-{$iid} .pill');
       const active = (st.m === (idx===0?2:(idx===1?1:0)));
-      pill && pill.classList.toggle('active', active);
+      if (pill) { pill.classList.toggle('active', active); }
     });
   }
 
