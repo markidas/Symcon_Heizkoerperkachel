@@ -143,8 +143,8 @@ class HeatingTile2 extends IPSModule
       <path id="bg-$iid" class="gBg" d="M 60 180 A 110 110 0 1 1 240 180"
             fill="none" stroke-width="12" stroke-linecap="round"/>
       <!-- Stellbogen (wird per JS gesetzt) -->
-      <path id="fg-$iid" d="" class="gAccent" fill="none"
-            stroke="url(#grad-$iid)" stroke-width="16" stroke-linecap="round"/>
+      <path id="fg-$iid" d="M 60 180 A 110 110 0 0 1 70 140" class="gAccent" fill="none"
+      stroke="url(#grad-$iid)" stroke-width="20" stroke-linecap="round"/>
       <!-- Drag-Knob (sichtbar) -->
       <circle id="knob-$iid" class="knob" cx="240" cy="180" r="13"/>
       <!-- Unsichtbare Trefferfläche für leichteres Draggen -->
