@@ -6,329 +6,164 @@ class HeatingTile2 extends IPSModule
     public function Create()
     {
         parent::Create();
+        // Properties für die Variablen
+        $this->RegisterPropertyInteger('VarID_TempIst', 0);
+        $this->RegisterPropertyInteger('VarID_TempSoll', 0);
+        $this->RegisterPropertyInteger('VarID_ValvePercent', 0);
+        $this->RegisterPropertyInteger('VarID_Mode', 0);
 
-        // Konfigurations-Properties
-        $this->RegisterPropertyInteger('ActualTempVarID', 0);    // Float °C
-        $this->RegisterPropertyInteger('SetpointVarID', 0);      // Float °C
-        $this->RegisterPropertyInteger('ValvePercentVarID', 0);  // Float 0..100 %
-        $this->RegisterPropertyInteger('ModeVarID', 0);          // Int 0/1/2
-        $this->RegisterPropertyFloat('SetpointStep', 0.5);
-        $this->RegisterPropertyInteger('Decimals', 1);
-
-        // Visualisierung (HTMLBox)
-        $this->RegisterVariableString('Tile', 'Heizung', '~HTMLBox', 0);
-        IPS_SetHidden($this->GetIDForIdent('Tile'), false);
+        // Ausgabe-Buffer
+        $this->RegisterBuffer('HTML', '');
     }
 
     public function ApplyChanges()
     {
         parent::ApplyChanges();
 
-        // Auf Variablen-Updates hören (nur wenn existent)
-        $watch = [
-            $this->ReadPropertyInteger('ActualTempVarID'),
-            $this->ReadPropertyInteger('SetpointVarID'),
-            $this->ReadPropertyInteger('ValvePercentVarID'),
-            $this->ReadPropertyInteger('ModeVarID'),
-        ];
-        foreach ($watch as $vid) {
-            if ($vid > 0 && IPS_VariableExists($vid)) {
-                $this->RegisterMessage($vid, VM_UPDATE);
-            }
-        }
+        // Auf Variablen-Änderungen reagieren
+        $this->MaintainVariable('HTML', 'Anzeige', vtString, '', 1, true);
 
-        $this->Render();
+        $ids = [
+            'ist'   => $this->ReadPropertyInteger('VarID_TempIst'),
+            'soll'  => $this->ReadPropertyInteger('VarID_TempSoll'),
+            'vent'  => $this->ReadPropertyInteger('VarID_ValvePercent'),
+            'mode'  => $this->ReadPropertyInteger('VarID_Mode')
+        ];
+
+        $values = $this->SafeRead($ids);
+        $html   = $this->BuildHTML($values);
+        SetValueString($this->GetIDForIdent('HTML'), $html);
+
+        // Ereignisse zuordnen
+        $this->RegisterMessage($ids['ist'], VM_UPDATE);
+        $this->RegisterMessage($ids['soll'], VM_UPDATE);
+        $this->RegisterMessage($ids['vent'], VM_UPDATE);
+        $this->RegisterMessage($ids['mode'], VM_UPDATE);
     }
 
     public function MessageSink($TimeStamp, $SenderID, $Message, $Data)
     {
         if ($Message === VM_UPDATE) {
-            $this->Render();
+            // Neu rendern
+            $ids = [
+                'ist'   => $this->ReadPropertyInteger('VarID_TempIst'),
+                'soll'  => $this->ReadPropertyInteger('VarID_TempSoll'),
+                'vent'  => $this->ReadPropertyInteger('VarID_ValvePercent'),
+                'mode'  => $this->ReadPropertyInteger('VarID_Mode')
+            ];
+            $values = $this->SafeRead($ids);
+            $html   = $this->BuildHTML($values);
+            SetValueString($this->GetIDForIdent('HTML'), $html);
         }
     }
 
-    /* ===========================
-       Sichere Lese-/Typ-Helfer
-       =========================== */
-
-    private function readVarFloatOrNull(int $varId): ?float
+    private function SafeRead(array $ids): array
     {
-        if ($varId <= 0 || !IPS_VariableExists($varId)) {
-            return null;
-        }
-        $v = IPS_GetVariable($varId);
-        $type = $v['VariableType']; // 0:Bool, 1:Int, 2:Float, 3:String
-        $val = GetValue($varId);
+        $out = ['ist' => null, 'soll' => null, 'vent' => null, 'mode' => null];
 
-        if ($type === 2 || $type === 1) { // Float ODER Int zulassen
-            return is_numeric($val) ? floatval($val) : null;
+        foreach ($ids as $k => $id) {
+            if ($id > 0 && IPS_VariableExists($id)) {
+                $v = GetValue($id);
+                // Typ-sicher runden/konvertieren
+                if (in_array($k, ['ist', 'soll'])) {
+                    $out[$k] = is_numeric($v) ? round((float)$v, 1) : null;
+                } elseif ($k === 'vent') {
+                    $out[$k] = is_numeric($v) ? max(0, min(100, (int)$v)) : null;
+                } else {
+                    $out[$k] = is_numeric($v) ? (int)$v : null;
+                }
+            }
         }
-
-        $this->SendDebug('HeatingTile2', "Variablentyp (ID $varId) ist $type, erwartet Float/Int", 0);
-        return null;
+        return $out;
     }
 
-    private function readVarIntOrNull(int $varId): ?int
+    private function BuildHTML(array $v): string
     {
-        if ($varId <= 0 || !IPS_VariableExists($varId)) {
-            return null;
-        }
-        $v = IPS_GetVariable($varId);
-        $type = $v['VariableType'];
-        $val = GetValue($varId);
-
-        if ($type === 1 || $type === 2) { // Int oder Float -> als Int interpretieren
-            return is_numeric($val) ? intval($val) : null;
-        }
-
-        $this->SendDebug('HeatingTile2', "Variablentyp (ID $varId) ist $type, erwartet Int/Float", 0);
-        return null;
-    }
-
-    private function safeRound(?float $num, int $dec, float $fallback = 0.0): float
-    {
-        if ($num === null) {
-            return $fallback;
-        }
-        return round($num, $dec);
-    }
-
-    /* ==============
-       Rendering
-       ============== */
-
-    public function Render(): void
-    {
-        $dec = $this->ReadPropertyInteger('Decimals');
-
-        $A = $this->safeRound($this->readVarFloatOrNull($this->ReadPropertyInteger('ActualTempVarID')), $dec, 0.0);
-        $S = $this->safeRound($this->readVarFloatOrNull($this->ReadPropertyInteger('SetpointVarID')), $dec, 0.0);
-
-        $Vraw = $this->readVarFloatOrNull($this->ReadPropertyInteger('ValvePercentVarID'));
-        $V = ($Vraw === null) ? 0 : max(0, min(100, intval(round($Vraw))));
-
-        $M = $this->readVarIntOrNull($this->ReadPropertyInteger('ModeVarID'));
-        $M = $M === null ? 0 : $M;
-
-        $html = $this->BuildHTML($A, $S, $V, $M);
-        SetValue($this->GetIDForIdent('Tile'), $html);
-    }
-
-    private function BuildHTML(float $A, float $S, int $V, int $M): string
-    {
-        $iid  = $this->InstanceID;
-        $decimals = (int)$this->ReadPropertyInteger('Decimals');
-        $step = (float)$this->ReadPropertyFloat('SetpointStep');
-
-        // IDs für direkte RequestAction-Calls
-        $idA = (int)$this->ReadPropertyInteger('ActualTempVarID');
-        $idS = (int)$this->ReadPropertyInteger('SetpointVarID');
-        $idV = (int)$this->ReadPropertyInteger('ValvePercentVarID');
-        $idM = (int)$this->ReadPropertyInteger('ModeVarID');
-
-        return <<<HTML
+        // System-/Skinfarben aus Symcon-Theme via CSS-Variablen:
+        // --theme-fg, --theme-bg, --theme-accent (Fallbacks definiert)
+        $css = <<<CSS
 <style>
-#ht-$iid { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial; }
-#ht-$iid { width: 100%; height: auto; color: var(--text-color, var(--foreground, #ffffff)); }
-#ht-$iid .card { background: var(--background-color, var(--surface, #2f2f35)); border-radius: 12px; padding: clamp(8px, 2.2vw, 18px); }
-#ht-$iid .row { display: flex; align-items: center; justify-content: center; gap: 1rem; }
-#ht-$iid .big { font-size: clamp(18px, 6.8vw, 40px); font-weight: 600; }
-#ht-$iid .mid { font-size: clamp(12px, 3.6vw, 22px); font-weight: 500; opacity: .9; }
-#ht-$iid .muted { opacity: .7; }
-#ht-$iid button { border: 0; border-radius: 10px; padding: .4em .7em; font-size: clamp(12px, 3.5vw, 18px); cursor: pointer; background: transparent; color: inherit; }
-#ht-$iid .pill { padding: .5em .6em; border-radius: 8px; }
-#ht-$iid .active { background: var(--accent-color, var(--primary, #1fd1b2)); color: var(--on-accent, #000); }
-#ht-$iid .status { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; margin-top: .5rem; }
-#ht-$iid .status .item { text-align: center; border-radius: 10px; padding: .45rem .5rem; background: color-mix(in oklab, var(--background-color, #2f2f35), #fff 6%); }
-#ht-$iid .status .item strong { display:block; }
-#ht-$iid svg { width: 100%; height: auto; }
+:root{
+  --fg: var(--theme-fg, #e5e7eb);
+  --bg: var(--theme-bg, #111827);
+  --muted: var(--theme-muted, #9ca3af);
+  --accent: var(--theme-accent, #3b82f6);
+  --ok: var(--theme-ok, #10b981);
+  --warn: var(--theme-warn, #f59e0b);
+}
+.ht2 { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; color: var(--fg); background: transparent; width: 100%; height: 100%; }
+.ht2 * { box-sizing: border-box; }
+.ht2 .wrap { width: 100%; height: 100%; display: grid; place-items: center; padding: 4%; }
+.ht2 .tile { width: 100%; height: 100%; aspect-ratio: 1 / 1; position: relative; }
+.ht2 .t-istsoll { position: absolute; top: 10%; width: 100%; text-align: center; }
+.ht2 .t-istsoll .ist { font-weight: 600; }
+.ht2 .t-istsoll .soll { margin-top: 0.2em; }
+.ht2 .ring { position: absolute; inset: 10% 10% 20% 10%; }
+.ht2 .statuses { position: absolute; bottom: 6%; width: 100%; display: flex; gap: 0.6em; justify-content: center; flex-wrap: wrap; }
+.ht2 .status { padding: .35em .6em; border-radius: .8em; background: rgba(255,255,255,.06); color: var(--muted); cursor: pointer; user-select: none; }
+.ht2 .status.active { background: var(--accent); color: white; }
+@container size (min-width:160px){
+  .ht2 .ist { font-size: clamp(16px, 14cqi, 36px); }
+  .ht2 .soll { font-size: clamp(12px, 9cqi, 20px); }
+  .ht2 .statuses { font-size: clamp(10px, 6cqi, 16px); }
+}
 </style>
+CSS;
 
-<div id="ht-$iid" class="card">
-  <div class="gauge">
-    <svg viewBox="0 0 300 220" preserveAspectRatio="xMidYMid meet">
-      <path id="bg-$iid" d="M 60 180 A 110 110 0 1 1 240 180"
-            fill="none" stroke="color-mix(in oklab, var(--accent-color, #1fd1b2), #000 70%)"
-            stroke-width="14" stroke-linecap="round"/>
-      <path id="fg-$iid" d="" fill="none"
-            stroke="var(--accent-color, var(--primary, #1fd1b2))"
-            stroke-width="14" stroke-linecap="round"/>
-      <circle id="knob-$iid" cx="240" cy="180" r="12"
-              fill="var(--accent-color, var(--primary, #1fd1b2))" />
-      <foreignObject x="0" y="70" width="300" height="140">
-        <div xmlns="http://www.w3.org/1999/xhtml" style="display:flex;flex-direction:column;align-items:center;gap:.4rem">
-          <div class="big" id="tActual-$iid">{$A}°C</div>
-          <div class="mid muted" id="tValve-$iid">{$V}%</div>
-          <div class="row">
-            <button class="pill" onclick="HT$iid.dec()">−</button>
-            <div class="mid" id="tSet-$iid">{$S}°C</div>
-            <button class="pill" onclick="HT$iid.inc()">+</button>
-          </div>
-        </div>
-      </foreignObject>
-    </svg>
-  </div>
+        // Werte absichern
+        $ist  = $v['ist']  ?? 0.0;
+        $soll = $v['soll'] ?? 0.0;
+        $vent = $v['vent'] ?? 0; // 0..100
+        // 3/4-Kreis + dicker Abschnitt + Punkt
+        $svg = $this->BuildGaugeSVG($vent);
 
-  <div class="status">
-    <div class="item" id="mKomfort-$iid" onclick="HT$iid.setMode(2)">
-      <span class="pill">Komfort</span>
-      <strong id="mKomfortVal-$iid">{$S}°C</strong>
-    </div>
-    <div class="item" id="mStandby-$iid" onclick="HT$iid.setMode(1)">
-      <span class="pill">Standby</span>
-      <strong>20,5°C</strong>
-    </div>
-    <div class="item" id="mFrost-$iid" onclick="HT$iid.setMode(0)">
-      <span class="pill">Frost</span>
-      <strong>5,0°C</strong>
+        $html = <<<HTML
+<div class="ht2">
+  <div class="wrap">
+    <div class="tile">
+      <div class="t-istsoll">
+        <div class="ist">{$ist}°C</div>
+        <div class="soll">{$soll}°C</div>
+      </div>
+      <div class="ring">{$svg}</div>
+      <div class="statuses">
+        <div class="status">Auto</div>
+        <div class="status">Manuell</div>
+        <div class="status">Aus</div>
+      </div>
     </div>
   </div>
 </div>
-
-<script>
-(function(){
-  // Aktuelle Werte
-  const st = {
-    v: {$V}, // valve %
-    s: {$S}, // setpoint
-    a: {$A}, // actual
-    m: {$M}  // mode
-  };
-
-  // Variablen-IDs für direkte RequestAction-Calls
-  const VID = {
-    actual: {$idA},
-    setpoint: {$idS},
-    valve: {$idV},
-    mode: {$idM}
-  };
-
-  const dec = {$decimals};
-  const step = {$step};
-  const iid = {$iid};
-
-  // JSON-RPC gegen die eingebaute Symcon API (Session kommt vom WebFront)
-  async function rpc(method, params){
-    try{
-      const res = await fetch('/api/', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({jsonrpc:'2.0', id: 'ht-'+iid+'-'+Date.now(), method, params})
-      });
-      if(!res.ok) return null;
-      const j = await res.json();
-      return j && j.result !== undefined ? j.result : null;
-    }catch(e){ return null; }
-  }
-
-  // Komfort-Wrapper
-  async function requestAction(varId, value){
-    if(!varId || varId <= 0) return null;
-    return await rpc('RequestAction', [varId, value]);
-  }
-
-  // Gauge-Zeichnung
-  const PI = Math.PI;
-  const cx=150, cy=180, r=110;
-
-  function polarToXY(angle){ return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) }; }
-  function angleForPercent(p){ return (-0.75*PI) + ( (1.5*PI) * (p/100) ); }
-  function arcPath(pct){
-    const a = angleForPercent(pct);
-    const p1 = polarToXY(-0.75*PI);
-    const p2 = polarToXY(a);
-    const large = (pct > 50) ? 1 : 0;
-    // WICHTIG: keine Template-Literals (PHP würde ${...} fehlinterpretieren)
-    return 'M ' + p1.x + ' ' + p1.y + ' A ' + r + ' ' + r + ' 0 ' + large + ' 1 ' + p2.x + ' ' + p2.y;
-  }
-
-  function updateGauge(){
-    document.getElementById('fg-{$iid}').setAttribute('d', arcPath(st.v));
-    const a = angleForPercent(st.v);
-    const p = polarToXY(a);
-    const knob = document.getElementById('knob-{$iid}');
-    knob.setAttribute('cx', p.x); knob.setAttribute('cy', p.y);
-    document.getElementById('tValve-{$iid}').textContent = Math.round(st.v) + '%';
-    document.getElementById('tActual-{$iid}').textContent = st.a.toFixed(dec) + '°C';
-    document.getElementById('tSet-{$iid}').textContent = st.s.toFixed(dec) + '°C';
-
-    // Status highlight
-    ['mKomfort','mStandby','mFrost'].forEach((id, idx)=>{
-      const pill = document.querySelector('#'+id+'-{$iid} .pill');
-      const active = (st.m === (idx===0?2:(idx===1?1:0)));
-      if (pill) { pill.classList.toggle('active', active); }
-    });
-  }
-
-  // Dragging
-  const svg = document.querySelector('#ht-{$iid} svg');
-  let dragging = false;
-
-  function setFromEvent(evt){
-    const rect = svg.getBoundingClientRect();
-    const x = evt.clientX - rect.left;
-    const y = evt.clientY - rect.top;
-    const ang = Math.atan2(y-cy, x-cx);
-    const cl = Math.max(-0.75*PI, Math.min(0.75*PI, ang));
-    const pct = ((cl + 0.75*PI) / (1.5*PI)) * 100;
-    st.v = Math.max(0, Math.min(100, pct));
-    updateGauge();
-  }
-
-  svg.addEventListener('pointerdown', (e)=>{ dragging=true; svg.setPointerCapture(e.pointerId); setFromEvent(e); });
-  svg.addEventListener('pointermove', (e)=>{ if(dragging) setFromEvent(e); });
-  svg.addEventListener('pointerup', async (e)=>{ 
-    if(!dragging) return; dragging=false; 
-    const newVal = Math.round(st.v);
-    await requestAction(VID.valve, newVal);
-    // UI bleibt optimistisch; vollständiges Re-Rendern kommt eh per VM_UPDATE
-  });
-
-  window.HT{$iid} = {
-    _state: st,
-    inc: async ()=>{
-      const v = +(st.s + step).toFixed(dec);
-      st.s = v; updateGauge();
-      await requestAction(VID.setpoint, v);
-    },
-    dec: async ()=>{
-      const v = +(st.s - step).toFixed(dec);
-      st.s = v; updateGauge();
-      await requestAction(VID.setpoint, v);
-    },
-    setMode: async (m)=>{
-      st.m = m; updateGauge();
-      await requestAction(VID.mode, m);
-    }
-  };
-
-  updateGauge();
-})();
-</script>
 HTML;
+
+        return $css . $html;
     }
 
-    /* ===========================
-       Instanz-Konfigurationsdialog
-       =========================== */
-
-    public function GetConfigurationForm()
+    private function BuildGaugeSVG(int $percent): string
     {
-        return json_encode([
-            'elements' => [
-                ['type' => 'Label', 'caption' => 'Variablen aus dem Objektbaum auswählen'],
+        // 3/4-Kreis (270°), Start bei 225°, Ende bei 135° (oben offen)
+        $size = 100; $stroke = 10;
+        $r = ($size - $stroke) / 2;
+        $cx = $cy = $size / 2;
+        $circ = 2 * M_PI * $r * 0.75; // 3/4 Umfang
+        $filled = $circ * ($percent / 100);
+        $gap = $circ - $filled;
 
-                // variableType: 2 = Float, 1 = Integer
-                ['type' => 'SelectVariable', 'name' => 'ActualTempVarID',   'caption' => 'Ist-Temperatur (Float °C)',         'variableType' => 2],
-                ['type' => 'SelectVariable', 'name' => 'SetpointVarID',     'caption' => 'Sollwert (Float °C)',               'variableType' => 2],
-                ['type' => 'SelectVariable', 'name' => 'ValvePercentVarID', 'caption' => 'Stellgröße/Valve (Float 0..100%)',  'variableType' => 2],
-                ['type' => 'SelectVariable', 'name' => 'ModeVarID',         'caption' => 'Betriebsart (Integer 0/1/2)',       'variableType' => 1],
-
-                ['type' => 'NumberSpinner', 'name' => 'SetpointStep', 'caption' => 'Schrittweite Sollwert (°C)', 'digits' => 1, 'minimum' => 0.1],
-                ['type' => 'NumberSpinner', 'name' => 'Decimals',     'caption' => 'Nachkommastellen Temperatur', 'minimum' => 0, 'maximum' => 2],
-
-                ['type' => 'Label', 'caption' => 'Hinweis: Die Kachel erscheint als Variable "~HTMLBox" in der Instanz und kann im WebFront verlinkt werden.']
-            ]
-        ]);
+        return sprintf(
+            '<svg viewBox="0 0 %1$d %1$d" preserveAspectRatio="xMidYMid meet" style="width:100%%;height:100%%;display:block;">
+  <g transform="rotate(225 %2$f %2$f)">
+    <circle cx="%2$f" cy="%2$f" r="%3$f" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="%4$f"
+            stroke-dasharray="%5$f %5$f" stroke-dashoffset="0" pathLength="1"/>
+    <circle cx="%2$f" cy="%2$f" r="%3$f" fill="none" stroke="var(--accent)" stroke-linecap="round" stroke-width="%4$f"
+            stroke-dasharray="%6$f %7$f" stroke-dashoffset="0" pathLength="%8$f"/>
+    <circle cx="%2$f" cy="%2$f" r="%3$f" fill="none" stroke="var(--accent)" stroke-width="%4$f"
+            stroke-dasharray="0.001 %8$f" stroke-dashoffset="%9$f" pathLength="%8$f"/>
+  </g>
+</svg>',
+            $size, $cx, $r, $stroke,
+            0.75,                // Hintergrund-Kreis auf 3/4
+            $filled, $gap, $circ,
+            max(0.0, $circ - 0.001) // Punkt am Ende
+        );
     }
 }
