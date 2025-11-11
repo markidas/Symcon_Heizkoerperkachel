@@ -1,12 +1,8 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/helper.php';
-
 class HeatingTile2 extends IPSModule
 {
-    use HT_WebHook;
-
     public function Create()
     {
         parent::Create();
@@ -18,9 +14,8 @@ class HeatingTile2 extends IPSModule
         $this->RegisterPropertyInteger('ModeVarID', 0);          // Int 0/1/2
         $this->RegisterPropertyFloat('SetpointStep', 0.5);
         $this->RegisterPropertyInteger('Decimals', 1);
-        $this->RegisterPropertyString('HookPath', '/hook/heatingtile');
 
-        // Visualisierung
+        // Visualisierung (HTMLBox)
         $this->RegisterVariableString('Tile', 'Heizung', '~HTMLBox', 0);
         IPS_SetHidden($this->GetIDForIdent('Tile'), false);
     }
@@ -28,11 +23,6 @@ class HeatingTile2 extends IPSModule
     public function ApplyChanges()
     {
         parent::ApplyChanges();
-
-        // WebHook registrieren (zeigt auf ein Skript unter dieser Instanz)
-        $hookPath = rtrim($this->ReadPropertyString('HookPath'), '/').'/'.$this->InstanceID;
-        $targetScriptId = $this->RegisterHookScript($hookPath);
-        $this->RegisterHook($hookPath, $targetScriptId);
 
         // Auf Variablen-Updates hören (nur wenn existent)
         $watch = [
@@ -55,22 +45,6 @@ class HeatingTile2 extends IPSModule
         if ($Message === VM_UPDATE) {
             $this->Render();
         }
-    }
-
-    private function RegisterHookScript(string $hook): int
-    {
-        // Unsichtbares PHP-Skript für den WebHook erzeugen/finden
-        $ident = 'HookScript';
-        $sid = @$this->GetIDForIdent($ident);
-        if (!$sid) {
-            $sid = IPS_CreateScript(0);
-            IPS_SetParent($sid, $this->InstanceID);
-            IPS_SetName($sid, 'HeatingTile Hook');
-            IPS_SetIdent($sid, $ident);
-            IPS_SetScriptContent($sid, file_get_contents(__DIR__ . '/hook.php'));
-        }
-        // WICHTIG: Keine IPS_SetProperty(...) auf $sid (Scripts haben keine Properties)
-        return $sid;
     }
 
     /* ===========================
@@ -143,9 +117,14 @@ class HeatingTile2 extends IPSModule
     private function BuildHTML(float $A, float $S, int $V, int $M): string
     {
         $iid  = $this->InstanceID;
-        $hook = rtrim($this->ReadPropertyString('HookPath'), '/').'/'.$iid;
         $decimals = (int)$this->ReadPropertyInteger('Decimals');
         $step = (float)$this->ReadPropertyFloat('SetpointStep');
+
+        // IDs für direkte RequestAction-Calls
+        $idA = (int)$this->ReadPropertyInteger('ActualTempVarID');
+        $idS = (int)$this->ReadPropertyInteger('SetpointVarID');
+        $idV = (int)$this->ReadPropertyInteger('ValvePercentVarID');
+        $idM = (int)$this->ReadPropertyInteger('ModeVarID');
 
         return <<<HTML
 <style>
@@ -208,25 +187,52 @@ class HeatingTile2 extends IPSModule
 
 <script>
 (function(){
+  // Aktuelle Werte
   const st = {
     v: {$V}, // valve %
     s: {$S}, // setpoint
     a: {$A}, // actual
     m: {$M}  // mode
   };
-  const hook = '{$hook}';
+
+  // Variablen-IDs für direkte RequestAction-Calls
+  const VID = {
+    actual: {$idA},
+    setpoint: {$idS},
+    valve: {$idV},
+    mode: {$idM}
+  };
+
   const dec = {$decimals};
   const step = {$step};
+  const iid = {$iid};
 
+  // JSON-RPC gegen die eingebaute Symcon API (Session kommt vom WebFront)
+  async function rpc(method, params){
+    try{
+      const res = await fetch('/api/', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({jsonrpc:'2.0', id: 'ht-'+iid+'-'+Date.now(), method, params})
+      });
+      if(!res.ok) return null;
+      const j = await res.json();
+      return j && j.result !== undefined ? j.result : null;
+    }catch(e){ return null; }
+  }
+
+  // Komfort-Wrapper
+  async function requestAction(varId, value){
+    if(!varId || varId <= 0) return null;
+    return await rpc('RequestAction', [varId, value]);
+  }
+
+  // Gauge-Zeichnung
   const PI = Math.PI;
   const cx=150, cy=180, r=110;
 
-  function polarToXY(angle){
-    return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
-  }
-  function angleForPercent(p){ // map 0..100 => -3/4*PI .. +3/4*PI
-    return (-0.75*PI) + ( (1.5*PI) * (p/100) );
-  }
+  function polarToXY(angle){ return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) }; }
+  function angleForPercent(p){ return (-0.75*PI) + ( (1.5*PI) * (p/100) ); }
   function arcPath(pct){
     const a = angleForPercent(pct);
     const p1 = polarToXY(-0.75*PI);
@@ -234,6 +240,7 @@ class HeatingTile2 extends IPSModule
     const large = (pct > 50) ? 1 : 0;
     return `M ${p1.x} ${p1.y} A ${r} ${r} 0 ${large} 1 ${p2.x} ${p2.y}`;
   }
+
   function updateGauge(){
     document.getElementById('fg-{$iid}').setAttribute('d', arcPath(st.v));
     const a = angleForPercent(st.v);
@@ -252,22 +259,11 @@ class HeatingTile2 extends IPSModule
     });
   }
 
-  async function post(action, payload){
-    try {
-      const res = await fetch(hook+'?iid={$iid}', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(Object.assign({action}, payload||{}))
-      });
-      if (!res.ok) return;
-      return await res.json();
-    } catch(e) { /* ignore */ }
-  }
-
+  // Dragging
   const svg = document.querySelector('#ht-{$iid} svg');
   let dragging = false;
 
-  function setFromXY(evt){
+  function setFromEvent(evt){
     const rect = svg.getBoundingClientRect();
     const x = evt.clientX - rect.left;
     const y = evt.clientY - rect.top;
@@ -278,27 +274,30 @@ class HeatingTile2 extends IPSModule
     updateGauge();
   }
 
-  svg.addEventListener('pointerdown', (e)=>{ dragging=true; svg.setPointerCapture(e.pointerId); setFromXY(e); });
-  svg.addEventListener('pointermove', (e)=>{ if(dragging) setFromXY(e); });
+  svg.addEventListener('pointerdown', (e)=>{ dragging=true; svg.setPointerCapture(e.pointerId); setFromEvent(e); });
+  svg.addEventListener('pointermove', (e)=>{ if(dragging) setFromEvent(e); });
   svg.addEventListener('pointerup', async (e)=>{ 
     if(!dragging) return; dragging=false; 
-    const r = await post('setValve', {value: st.v}); 
-    if (r && r.value !== undefined) st.v = r.value; 
-    updateGauge();
+    const newVal = Math.round(st.v);
+    await requestAction(VID.valve, newVal);
+    // UI bleibt optimistisch; vollständiges Re-Rendern kommt eh per VM_UPDATE
   });
 
   window.HT{$iid} = {
     _state: st,
     inc: async ()=>{
-      const r = await post('incSetpoint'); 
-      if(r && r.value!==undefined){ st.s=r.value; updateGauge(); }
+      const v = +(st.s + step).toFixed(dec);
+      st.s = v; updateGauge();
+      await requestAction(VID.setpoint, v);
     },
     dec: async ()=>{
-      const r = await post('decSetpoint'); 
-      if(r && r.value!==undefined){ st.s=r.value; updateGauge(); }
+      const v = +(st.s - step).toFixed(dec);
+      st.s = v; updateGauge();
+      await requestAction(VID.setpoint, v);
     },
     setMode: async (m)=>{
-      st.m=m; updateGauge(); await post('setMode',{value:m});
+      st.m = m; updateGauge();
+      await requestAction(VID.mode, m);
     }
   };
 
@@ -326,9 +325,8 @@ HTML;
 
                 ['type' => 'NumberSpinner', 'name' => 'SetpointStep', 'caption' => 'Schrittweite Sollwert (°C)', 'digits' => 1, 'minimum' => 0.1],
                 ['type' => 'NumberSpinner', 'name' => 'Decimals',     'caption' => 'Nachkommastellen Temperatur', 'minimum' => 0, 'maximum' => 2],
-                ['type' => 'ValidationTextBox', 'name' => 'HookPath', 'caption' => 'WebHook-Basis (z. B. /hook/heatingtile)'],
 
-                ['type' => 'Label', 'caption' => 'Die Kachel erscheint als Variable "~HTMLBox" in der Instanz und kann im WebFront verlinkt werden.']
+                ['type' => 'Label', 'caption' => 'Hinweis: Die Kachel erscheint als Variable "~HTMLBox" in der Instanz und kann im WebFront verlinkt werden.']
             ]
         ]);
     }
