@@ -10,7 +10,7 @@ class HeatingTile2 extends IPSModule
         // Konfigurations-Properties (per Objektbaum wählbar)
         $this->RegisterPropertyInteger('ActualTempVarID', 0);    // Float °C
         $this->RegisterPropertyInteger('SetpointVarID', 0);      // Float °C
-        $this->RegisterPropertyInteger('ValvePercentVarID', 0);  // Float/Int 0..100
+        $this->RegisterPropertyInteger('ValvePercentVarID', 0);  // Float/Int 0..100 (nur Anzeige)
         $this->RegisterPropertyInteger('ModeVarID', 0);          // Int (Enum)
 
         // Anzeige-Parameter
@@ -63,7 +63,7 @@ class HeatingTile2 extends IPSModule
         $S = $this->safeRound($this->readVarFloatOrNull($this->ReadPropertyInteger('SetpointVarID')), $dec, 0.0);
 
         $Vraw = $this->readVarFloatOrNull($this->ReadPropertyInteger('ValvePercentVarID'));
-        $V = ($Vraw === null) ? 0 : max(0, min(100, intval(round($Vraw))));
+        $V = ($Vraw === null) ? 0 : max(0, min(100, intval(round($Vraw)))); // Anzeige 0..100 %
 
         $M = $this->readVarIntOrNull($this->ReadPropertyInteger('ModeVarID'));
         $M = ($M === null) ? 0 : $M;
@@ -75,19 +75,36 @@ class HeatingTile2 extends IPSModule
         }
     }
 
+    /* ==========
+       HTML/JS
+       ========== */
+
     private function BuildHTML(float $A, float $S, int $V, int $M): string
     {
         $iid  = $this->InstanceID;
         $decimals = (int)$this->ReadPropertyInteger('Decimals');
         $step = (float)$this->ReadPropertyFloat('SetpointStep');
 
-        // Variablen-IDs für RequestAction
-        $idA = (int)$this->ReadPropertyInteger('ActualTempVarID');
+        // Variablen-IDs für RequestAction (nur Setpoint & Mode sind aktiv)
         $idS = (int)$this->ReadPropertyInteger('SetpointVarID');
-        $idV = (int)$this->ReadPropertyInteger('ValvePercentVarID');
         $idM = (int)$this->ReadPropertyInteger('ModeVarID');
 
-        // Wichtig: im HEREDOC keine JS-Template-Literals (`${...}`) verwenden.
+        // --- Serverseitig Stellbogen & Knob berechnen (Anzeige-only) ---
+        $cx = 150.0; $cy = 180.0; $r = 110.0;
+        $startAng = -0.75 * M_PI;
+        $endAng   = $this->angleForPercent($V);
+        $startPt  = $this->polarToXY($cx, $cy, $r, $startAng);
+        $endPt    = $this->polarToXY($cx, $cy, $r, $endAng);
+        $largeArc = ($V > 50) ? 1 : 0;
+
+        $arcPath = sprintf(
+            "M %.2f %.2f A %.2f %.2f 0 %d 1 %.2f %.2f",
+            $startPt['x'], $startPt['y'], $r, $r, $largeArc, $endPt['x'], $endPt['y']
+        );
+        $knobX = $endPt['x'];
+        $knobY = $endPt['y'];
+
+        // Hinweis: im HEREDOC keine JS-Template-Literals (`${...}`) verwenden.
         return <<<HTML
 <style>
 #ht-$iid { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial; }
@@ -98,20 +115,21 @@ class HeatingTile2 extends IPSModule
 #ht-$iid .mid { font-size: clamp(12px, 3.6vw, 22px); font-weight: 500; opacity: .9; }
 #ht-$iid .muted { opacity: .7; }
 
-/* Farben/Stile für Schieberegler & Bogen */
-#ht-$iid .gAccent { stroke: var(--accent-color, var(--primary, #1fd1b2)); }
-#ht-$iid .gBg { stroke: color-mix(in oklab, var(--accent-color, #1fd1b2), #000 80%); opacity: .35; }
+/* Sichtbarkeit/Contrast des Reglers */
+#ht-$iid .gAccent { stroke: var(--accent-color, #ff5a00); } /* fallback: Orange */
+#ht-$iid .gBg { stroke: color-mix(in oklab, var(--accent-color, #ff5a00), #000 80%); opacity: .40; }
 #ht-$iid .knob {
-  fill: var(--accent-color, var(--primary, #1fd1b2));
-  stroke: var(--tile-bg-contrast, #000);
-  stroke-width: 3;
+  fill: var(--accent-color, #ff5a00);
+  stroke: color-mix(in oklab, var(--background-color, #0f172a), #000 80%);
+  stroke-width: 4;
   filter: url(#glow-$iid);
+  pointer-events: none; /* Anzeige: nicht klick-/draggable */
 }
 
 /* Buttons */
 #ht-$iid button { border: 0; border-radius: 10px; padding: .4em .7em; font-size: clamp(12px, 3.5vw, 18px); cursor: pointer; background: transparent; color: inherit; }
 #ht-$iid .pill { padding: .5em .6em; border-radius: 8px; }
-#ht-$iid .active { background: var(--accent-color, var(--primary, #1fd1b2)); color: var(--on-accent, #000); }
+#ht-$iid .active { background: var(--accent-color, #ff5a00); color: var(--on-accent, #000); }
 
 #ht-$iid .status { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; margin-top: .5rem; }
 #ht-$iid .status .item { text-align: center; border-radius: 10px; padding: .45rem .5rem; background: color-mix(in oklab, var(--background-color, #2f2f35), #fff 6%); }
@@ -120,9 +138,9 @@ class HeatingTile2 extends IPSModule
 #ht-$iid svg { width: 100%; height: auto; }
 </style>
 
-<div id="ht-$iid" class="card">
+<div id="ht-$iid" class="card" style="--accent-color:#ff5a00; --on-accent:#000;">
   <div class="gauge">
-    <svg viewBox="0 0 300 220" preserveAspectRatio="xMidYMid meet">
+    <svg viewBox="0 0 300 220" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
       <defs>
         <!-- Glow für Knob -->
         <filter id="glow-$iid" x="-50%" y="-50%" width="200%" height="200%">
@@ -134,21 +152,23 @@ class HeatingTile2 extends IPSModule
         </filter>
         <!-- Verlauf für Stellbogen -->
         <linearGradient id="grad-$iid" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stop-color="var(--accent-color, #1fd1b2)" stop-opacity="0.85"/>
-          <stop offset="100%" stop-color="var(--accent-color, #1fd1b2)" stop-opacity="1"/>
+          <stop offset="0%"   stop-color="var(--accent-color, #ff5a00)" stop-opacity="0.85"/>
+          <stop offset="100%" stop-color="var(--accent-color, #ff5a00)" stop-opacity="1"/>
         </linearGradient>
       </defs>
 
-      <!-- Hintergrundbogen -->
+      <!-- Hintergrundbogen (3/4-Kreis) -->
       <path id="bg-$iid" class="gBg" d="M 60 180 A 110 110 0 1 1 240 180"
-            fill="none" stroke-width="12" stroke-linecap="round"/>
-      <!-- Stellbogen (wird per JS gesetzt) -->
-      <path id="fg-$iid" d="M 60 180 A 110 110 0 0 1 70 140" class="gAccent" fill="none"
-      stroke="url(#grad-$iid)" stroke-width="20" stroke-linecap="round"/>
-      <!-- Drag-Knob (sichtbar) -->
-      <circle id="knob-$iid" class="knob" cx="240" cy="180" r="13"/>
-      <!-- Unsichtbare Trefferfläche für leichteres Draggen -->
-      <circle id="knobHit-$iid" cx="240" cy="180" r="22" fill="transparent" pointer-events="all"/>
+            fill="none" stroke-width="14" stroke-linecap="round"/>
+
+      <!-- Stellbogen (serverseitig fertig) -->
+      <path id="fg-$iid" d="$arcPath" class="gAccent" fill="none"
+            stroke="url(#grad-$iid)" stroke-width="20" stroke-linecap="round"/>
+
+      <!-- Knopf (serverseitig gesetzt; Anzeige-only) -->
+      <circle id="knob-$iid" class="knob" cx="{$knobX}" cy="{$knobY}" r="16"/>
+      <!-- Keine Hit-Fläche, keine Pointer-Events -->
+      
       <!-- Texte -->
       <foreignObject x="0" y="70" width="300" height="140">
         <div xmlns="http://www.w3.org/1999/xhtml" style="display:flex;flex-direction:column;align-items:center;gap:.4rem">
@@ -181,18 +201,12 @@ class HeatingTile2 extends IPSModule
 </div>
 
 <script>
+// Anzeige-only: kein Drag, kein RequestAction für Ventil
 (function(){
-  // Zustand
   var st = { v: $V, s: $S, a: $A, m: $M };
+  var VID = { setpoint: $idS, mode: $idM };
+  var dec = $decimals, step = $step, iid = $iid;
 
-  // Variablen-IDs (RequestAction)
-  var VID = { actual: $idA, setpoint: $idS, valve: $idV, mode: $idM };
-
-  var dec = $decimals;
-  var step = $step;
-  var iid = $iid;
-
-  // JSON-RPC auf /api/
   async function rpc(method, params){
     try{
       var res = await fetch('/api/', {
@@ -210,36 +224,14 @@ class HeatingTile2 extends IPSModule
     return await rpc('RequestAction', [varId, value]);
   }
 
-  // Geometrie
-  var PI = Math.PI;
-  var cx = 150, cy = 180, r = 110;
+  function updateTexts(){
+    var ta = document.getElementById('tActual-' + iid);
+    if (ta) ta.textContent = st.a.toFixed(dec) + '°C';
+    var ts = document.getElementById('tSet-' + iid);
+    if (ts) ts.textContent = st.s.toFixed(dec) + '°C';
+    var tv = document.getElementById('tValve-' + iid);
+    if (tv) tv.textContent = Math.round(st.v) + '%';
 
-  function polarToXY(angle){ return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) }; }
-  function angleForPercent(p){ return (-0.75*PI) + ((1.5*PI) * (p/100)); }
-  function arcPath(pct){
-    var a = angleForPercent(pct);
-    var p1 = polarToXY(-0.75*PI);
-    var p2 = polarToXY(a);
-    var large = (pct > 50) ? 1 : 0;
-    return 'M ' + p1.x + ' ' + p1.y + ' A ' + r + ' ' + r + ' 0 ' + large + ' 1 ' + p2.x + ' ' + p2.y;
-  }
-
-  function updateGauge(){
-    // Bogen + Knob
-    document.getElementById('fg-' + iid).setAttribute('d', arcPath(st.v));
-    var a = angleForPercent(st.v);
-    var p = polarToXY(a);
-    var knob = document.getElementById('knob-' + iid);
-    var knobHit = document.getElementById('knobHit-' + iid);
-    knob.setAttribute('cx', p.x); knob.setAttribute('cy', p.y);
-    knobHit.setAttribute('cx', p.x); knobHit.setAttribute('cy', p.y);
-
-    // Texte
-    document.getElementById('tValve-' + iid).textContent = Math.round(st.v) + '%';
-    document.getElementById('tActual-' + iid).textContent = st.a.toFixed(dec) + '°C';
-    document.getElementById('tSet-' + iid).textContent = st.s.toFixed(dec) + '°C';
-
-    // Status highlight
     var ids = ['mKomfort','mStandby','mFrost'];
     for (var k=0;k<ids.length;k++){
       var pill = document.querySelector('#' + ids[k] + '-' + iid + ' .pill');
@@ -248,52 +240,46 @@ class HeatingTile2 extends IPSModule
     }
   }
 
-  // Drag – wir erlauben Drag auf gesamter SVG-Fläche + KnobHit
-  var svg = document.querySelector('#ht-' + iid + ' svg');
-  var dragging = false;
-
-  function setFromEvent(evt){
-    var rect = svg.getBoundingClientRect();
-    var x = evt.clientX - rect.left;
-    var y = evt.clientY - rect.top;
-    var ang = Math.atan2(y - cy, x - cx);
-    var cl = Math.max(-0.75*PI, Math.min(0.75*PI, ang));
-    var pct = ((cl + 0.75*PI) / (1.5*PI)) * 100;
-    st.v = Math.max(0, Math.min(100, pct));
-    updateGauge();
-  }
-
-  svg.addEventListener('pointerdown', function(e){ dragging = true; svg.setPointerCapture(e.pointerId); setFromEvent(e); });
-  svg.addEventListener('pointermove', function(e){ if(dragging) setFromEvent(e); });
-  svg.addEventListener('pointerup', async function(e){
-    if(!dragging) return; dragging = false;
-    var newVal = Math.round(st.v);
-    await requestAction(VID.valve, newVal);
-  });
-
-  // Buttons
+  // Buttons (nur Setpoint & Mode)
   window['HT' + iid] = {
     _state: st,
     inc: async function(){
       var v = +(st.s + step).toFixed(dec);
-      st.s = v; updateGauge();
+      st.s = v; updateTexts();
       await requestAction(VID.setpoint, v);
     },
     dec: async function(){
       var v = +(st.s - step).toFixed(dec);
-      st.s = v; updateGauge();
+      st.s = v; updateTexts();
       await requestAction(VID.setpoint, v);
     },
     setMode: async function(m){
-      st.m = m; updateGauge();
+      st.m = m; updateTexts();
       await requestAction(VID.mode, m);
     }
   };
 
-  updateGauge();
+  updateTexts(); // nur Texte nachziehen (Bogen/Knob sind serverseitig vorgezeichnet)
 })();
 </script>
 HTML;
+    }
+
+    /* ===========================
+       Mathe-Helper (serverseitig)
+       =========================== */
+    private function angleForPercent(float $p): float
+    {
+        // 0..100% auf -135° .. +135° (in Radiant)
+        return (-0.75 * M_PI) + (1.5 * M_PI * ($p / 100.0));
+    }
+
+    private function polarToXY(float $cx, float $cy, float $r, float $angle): array
+    {
+        return [
+            'x' => $cx + $r * cos($angle),
+            'y' => $cy + $r * sin($angle)
+        ];
     }
 
     /* ===========================
@@ -311,7 +297,7 @@ HTML;
                 ['type' => 'SelectVariable', 'name' => 'ModeVarID',         'caption' => 'Betriebsart (Integer/Enum)',           'variableType' => 1],
                 ['type' => 'NumberSpinner',  'name' => 'SetpointStep',      'caption' => 'Schrittweite Sollwert (°C)', 'digits' => 1, 'minimum' => 0.1],
                 ['type' => 'NumberSpinner',  'name' => 'Decimals',          'caption' => 'Nachkommastellen Temperatur', 'minimum' => 0, 'maximum' => 2],
-                ['type' => 'Label',          'caption' => 'Die Kachel erscheint als Variable "~HTMLBox" in der Instanz und kann im WebFront verlinkt werden.']
+                ['type' => 'Label',          'caption' => 'Hinweis: Stellbogen ist Anzeige-only. ± ändert den Sollwert, Status-Buttons schalten die Betriebsart.']
             ]
         ]);
     }
