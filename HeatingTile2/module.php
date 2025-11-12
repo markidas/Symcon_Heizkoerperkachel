@@ -7,10 +7,10 @@ class HeatingTile2 extends IPSModule
     {
         parent::Create();
 
-        // Konfigurations-Properties (per Objektbaum wählbar)
+        // Variablen-Properties (per Objektbaum)
         $this->RegisterPropertyInteger('ActualTempVarID', 0);    // Float °C
         $this->RegisterPropertyInteger('SetpointVarID', 0);      // Float °C
-        $this->RegisterPropertyInteger('ValvePercentVarID', 0);  // Float/Int 0..100 (nur Anzeige)
+        $this->RegisterPropertyInteger('ValvePercentVarID', 0);  // Float/Int 0..100 (Anzeige)
         $this->RegisterPropertyInteger('ModeVarID', 0);          // Int (Enum)
 
         // Anzeige-Parameter
@@ -29,13 +29,12 @@ class HeatingTile2 extends IPSModule
         parent::ApplyChanges();
 
         // Auf Variablen-Updates hören (nur existierende)
-        $watch = [
+        foreach ([
             $this->ReadPropertyInteger('ActualTempVarID'),
             $this->ReadPropertyInteger('SetpointVarID'),
             $this->ReadPropertyInteger('ValvePercentVarID'),
             $this->ReadPropertyInteger('ModeVarID'),
-        ];
-        foreach ($watch as $vid) {
+        ] as $vid) {
             if ($vid > 0 && IPS_VariableExists($vid)) {
                 $this->RegisterMessage($vid, VM_UPDATE);
             }
@@ -85,11 +84,11 @@ class HeatingTile2 extends IPSModule
         $decimals = (int)$this->ReadPropertyInteger('Decimals');
         $step = (float)$this->ReadPropertyFloat('SetpointStep');
 
-        // Variablen-IDs für RequestAction (nur Setpoint & Mode sind aktiv)
+        // Aktive Actions: Sollwert/Mode
         $idS = (int)$this->ReadPropertyInteger('SetpointVarID');
         $idM = (int)$this->ReadPropertyInteger('ModeVarID');
 
-        // --- Serverseitig Stellbogen & Knob berechnen (Anzeige-only) ---
+        // --- Serverseitig Stellbogen & Knob (Anzeige-only) ---
         $cx = 150.0; $cy = 180.0; $r = 110.0;
         $startAng = -0.75 * M_PI;
         $endAng   = $this->angleForPercent($V);
@@ -104,56 +103,66 @@ class HeatingTile2 extends IPSModule
         $knobX = $endPt['x'];
         $knobY = $endPt['y'];
 
-        // Hinweis: im HEREDOC keine JS-Template-Literals (`${...}`) verwenden.
+        // Wichtig: im HEREDOC keine JS-Template-Literals verwenden.
         return <<<HTML
 <style>
 #ht-$iid { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial; }
 #ht-$iid { width: 100%; height: auto; color: var(--text-color, var(--foreground, #ffffff)); }
-#ht-$iid .card { background: var(--background-color, var(--surface, #2f2f35)); border-radius: 12px; padding: clamp(8px, 2.2vw, 18px); }
+
+/* Karte */
+#ht-$iid .card { 
+  background: var(--background-color, var(--surface, #2f2f35)); 
+  border-radius: 12px; 
+  padding: clamp(8px, 2.2vw, 18px); 
+}
+
+/* Typo & Layout */
 #ht-$iid .row { display: flex; align-items: center; justify-content: center; gap: 1rem; }
 #ht-$iid .big { font-size: clamp(18px, 6.8vw, 40px); font-weight: 600; }
 #ht-$iid .mid { font-size: clamp(12px, 3.6vw, 22px); font-weight: 500; opacity: .9; }
 #ht-$iid .muted { opacity: .7; }
 
-/* Sichtbarkeit/Contrast des Reglers */
-#ht-$iid .gAccent { stroke: var(--accent-color, #ff5a00); } /* fallback: Orange */
-#ht-$iid .gBg { stroke: color-mix(in oklab, var(--accent-color, #ff5a00), #000 80%); opacity: .40; }
+/* Farben/Stile für Regler & Bogen (Theme-basiert) */
+#ht-$iid .gAccent { stroke: var(--accent-color, var(--primary, #1fd1b2)); }
+#ht-$iid .gBg { 
+  stroke: color-mix(in oklab, var(--accent-color, #1fd1b2), #000 80%); 
+  opacity: .40; 
+}
 #ht-$iid .knob {
-  fill: var(--accent-color, #ff5a00);
+  fill: var(--accent-color, var(--primary, #1fd1b2));
   stroke: color-mix(in oklab, var(--background-color, #0f172a), #000 80%);
   stroke-width: 4;
   filter: url(#glow-$iid);
-  pointer-events: none; /* Anzeige: nicht klick-/draggable */
+  pointer-events: none; /* Anzeige-only */
 }
 
 /* Buttons */
 #ht-$iid button { border: 0; border-radius: 10px; padding: .4em .7em; font-size: clamp(12px, 3.5vw, 18px); cursor: pointer; background: transparent; color: inherit; }
 #ht-$iid .pill { padding: .5em .6em; border-radius: 8px; }
-#ht-$iid .active { background: var(--accent-color, #ff5a00); color: var(--on-accent, #000); }
+#ht-$iid .active { background: var(--accent-color, var(--primary, #1fd1b2)); color: var(--on-accent, #000); }
 
+/* Status-Zeile */
 #ht-$iid .status { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; margin-top: .5rem; }
 #ht-$iid .status .item { text-align: center; border-radius: 10px; padding: .45rem .5rem; background: color-mix(in oklab, var(--background-color, #2f2f35), #fff 6%); }
 #ht-$iid .status .item strong { display:block; }
 
+/* SVG responsive */
 #ht-$iid svg { width: 100%; height: auto; }
 </style>
 
-<div id="ht-$iid" class="card" style="--accent-color:#ff5a00; --on-accent:#000;">
+<div id="ht-$iid" class="card">
   <div class="gauge">
     <svg viewBox="0 0 300 220" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
       <defs>
         <!-- Glow für Knob -->
         <filter id="glow-$iid" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur stdDeviation="3" result="b"/>
-          <feMerge>
-            <feMergeNode in="b"/>
-            <feMergeNode in="SourceGraphic"/>
-          </feMerge>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
         <!-- Verlauf für Stellbogen -->
         <linearGradient id="grad-$iid" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stop-color="var(--accent-color, #ff5a00)" stop-opacity="0.85"/>
-          <stop offset="100%" stop-color="var(--accent-color, #ff5a00)" stop-opacity="1"/>
+          <stop offset="0%"   stop-color="var(--accent-color, var(--primary, #1fd1b2))" stop-opacity="0.85"/>
+          <stop offset="100%" stop-color="var(--accent-color, var(--primary, #1fd1b2))" stop-opacity="1"/>
         </linearGradient>
       </defs>
 
@@ -161,14 +170,13 @@ class HeatingTile2 extends IPSModule
       <path id="bg-$iid" class="gBg" d="M 60 180 A 110 110 0 1 1 240 180"
             fill="none" stroke-width="14" stroke-linecap="round"/>
 
-      <!-- Stellbogen (serverseitig fertig) -->
+      <!-- Stellbogen (serverseitig berechnet) -->
       <path id="fg-$iid" d="$arcPath" class="gAccent" fill="none"
             stroke="url(#grad-$iid)" stroke-width="20" stroke-linecap="round"/>
 
       <!-- Knopf (serverseitig gesetzt; Anzeige-only) -->
       <circle id="knob-$iid" class="knob" cx="{$knobX}" cy="{$knobY}" r="16"/>
-      <!-- Keine Hit-Fläche, keine Pointer-Events -->
-      
+
       <!-- Texte -->
       <foreignObject x="0" y="70" width="300" height="140">
         <div xmlns="http://www.w3.org/1999/xhtml" style="display:flex;flex-direction:column;align-items:center;gap:.4rem">
@@ -201,7 +209,7 @@ class HeatingTile2 extends IPSModule
 </div>
 
 <script>
-// Anzeige-only: kein Drag, kein RequestAction für Ventil
+// Anzeige-only: kein Drag; nur ± (Setpoint) und Status (Mode) aktiv
 (function(){
   var st = { v: $V, s: $S, a: $A, m: $M };
   var VID = { setpoint: $idS, mode: $idM };
@@ -240,7 +248,6 @@ class HeatingTile2 extends IPSModule
     }
   }
 
-  // Buttons (nur Setpoint & Mode)
   window['HT' + iid] = {
     _state: st,
     inc: async function(){
@@ -259,7 +266,7 @@ class HeatingTile2 extends IPSModule
     }
   };
 
-  updateTexts(); // nur Texte nachziehen (Bogen/Knob sind serverseitig vorgezeichnet)
+  updateTexts();
 })();
 </script>
 HTML;
@@ -276,10 +283,7 @@ HTML;
 
     private function polarToXY(float $cx, float $cy, float $r, float $angle): array
     {
-        return [
-            'x' => $cx + $r * cos($angle),
-            'y' => $cy + $r * sin($angle)
-        ];
+        return ['x' => $cx + $r * cos($angle), 'y' => $cy + $r * sin($angle)];
     }
 
     /* ===========================
@@ -297,7 +301,7 @@ HTML;
                 ['type' => 'SelectVariable', 'name' => 'ModeVarID',         'caption' => 'Betriebsart (Integer/Enum)',           'variableType' => 1],
                 ['type' => 'NumberSpinner',  'name' => 'SetpointStep',      'caption' => 'Schrittweite Sollwert (°C)', 'digits' => 1, 'minimum' => 0.1],
                 ['type' => 'NumberSpinner',  'name' => 'Decimals',          'caption' => 'Nachkommastellen Temperatur', 'minimum' => 0, 'maximum' => 2],
-                ['type' => 'Label',          'caption' => 'Hinweis: Stellbogen ist Anzeige-only. ± ändert den Sollwert, Status-Buttons schalten die Betriebsart.']
+                ['type' => 'Label',          'caption' => 'Stellbogen ist Anzeige-only. ± ändert den Sollwert, Status-Buttons schalten die Betriebsart.']
             ]
         ]);
     }
@@ -308,32 +312,22 @@ HTML;
 
     private function readVarFloatOrNull(int $varId): ?float
     {
-        if ($varId <= 0 || !IPS_VariableExists($varId)) {
-            return null;
-        }
+        if ($varId <= 0 || !IPS_VariableExists($varId)) return null;
         $v = IPS_GetVariable($varId);
         $type = $v['VariableType']; // 0:Bool, 1:Int, 2:Float, 3:String
         $val = GetValue($varId);
-
-        if ($type === 2 || $type === 1) { // Float ODER Int
-            return is_numeric($val) ? floatval($val) : null;
-        }
+        if ($type === 2 || $type === 1) return is_numeric($val) ? floatval($val) : null;
         $this->SendDebug('HeatingTile2', "Variablentyp (ID $varId) ist $type, erwartet Float/Int", 0);
         return null;
     }
 
     private function readVarIntOrNull(int $varId): ?int
     {
-        if ($varId <= 0 || !IPS_VariableExists($varId)) {
-            return null;
-        }
+        if ($varId <= 0 || !IPS_VariableExists($varId)) return null;
         $v = IPS_GetVariable($varId);
         $type = $v['VariableType'];
         $val = GetValue($varId);
-
-        if ($type === 1 || $type === 2) { // Int oder Float
-            return is_numeric($val) ? intval($val) : null;
-        }
+        if ($type === 1 || $type === 2) return is_numeric($val) ? intval($val) : null;
         $this->SendDebug('HeatingTile2', "Variablentyp (ID $varId) ist $type, erwartet Int/Float", 0);
         return null;
     }
