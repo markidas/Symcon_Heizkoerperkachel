@@ -88,7 +88,7 @@ class HeatingTile2 extends IPSModule
         $idS = (int)$this->ReadPropertyInteger('SetpointVarID');
         $idM = (int)$this->ReadPropertyInteger('ModeVarID');
 
-        // --- Feste Farben (kein Theme) ---
+        // --- Feste Farben ---
         $COLOR_BG       = '#1f2430';   // Kartenhintergrund
         $COLOR_TEXT     = '#e8eef6';   // Primärtext
         $COLOR_MUTED    = '#9aa6b2';   // Sekundärtext
@@ -97,43 +97,39 @@ class HeatingTile2 extends IPSModule
         $COLOR_OUTLINE  = '#0c0f14';   // Knopfkontur
         $COLOR_BGARC    = 'rgba(255,90,0,0.35)'; // gedimmter Hintergrundbogen
 
-        // --- Serverseitig Stellbogen & Knob (Anzeige-only), Start LINKS wie Hintergrundbogen ---
-        // Geometrie (einmal zentral)
-        $cx = 150.0; 
-        $cy = 180.0; 
-        $r  = 110.0;
-        
-        // Gemeinsamer Startwinkel: -135° (oben-links), Endwinkel des Hintergrundbogens: +135° (unten-links).
-        $startAng = -0.75 * M_PI;
-        $endAngBg = +0.75 * M_PI;
-        
-        // Hintergrundbogen: gleicher Mittelpunkt & Start/Ende wie gewünscht (270° CW)
-        $bgStart  = $this->polarToXY($cx, $cy, $r, $startAng);
-        $bgEnd    = $this->polarToXY($cx, $cy, $r, $endAngBg);
-        $bgLarge  = 1;   // 270° => immer "large-arc"
-        $bgSweep  = 1;   // clockwise
-        
+        // --- Geometrie / gemeinsamer Mittelpunkt & Startwinkel mit globalem -90° Offset ---
+        $cx = 150.0; $cy = 180.0; $r = 110.0;
+        $angleOffset = -M_PI / 2; // -90° (CCW) => korrigiert +90° Drift
+
+        // Hintergrundbogen: Start -135°, Ende +135°, beide mit Offset; 270° CW
+        $startAng = -0.75 * M_PI + $angleOffset;
+        $endAngBg =  0.75 * M_PI + $angleOffset;
+
+        $bgStart = $this->polarToXY($cx, $cy, $r, $startAng);
+        $bgEnd   = $this->polarToXY($cx, $cy, $r, $endAngBg);
+        $bgLarge = 1; // 270°
+        $bgSweep = 1; // clockwise
+
         $bgPath = sprintf(
             "M %.2f %.2f A %.2f %.2f 0 %d %d %.2f %.2f",
             $bgStart['x'], $bgStart['y'], $r, $r, $bgLarge, $bgSweep, $bgEnd['x'], $bgEnd['y']
         );
-        
-        // Stellbogen: gleicher Startpunkt, Endwinkel proportional (0..270° ab Start)
-        $delta    = 1.5 * M_PI * ($V / 100.0);     // 0..1.5π
-        $endAngFg = $startAng + $delta;            // läuft CW ab Start
+
+        // Stellbogen: gleicher Start, delta 0..270° CW ab Start (Offset bereits im startAng enthalten)
+        $delta    = 1.5 * M_PI * ($V / 100.0);   // 0..1.5π
+        $endAngFg = $startAng + $delta;
         $fgEnd    = $this->polarToXY($cx, $cy, $r, $endAngFg);
-        $fgLarge  = ($V > 66.6667) ? 1 : 0;        // >180°?
-        $fgSweep  = 1;                              // clockwise
-        
+        $fgLarge  = ($V > 66.6667) ? 1 : 0;      // >180°
+        $fgSweep  = 1;                           // clockwise
+
         $fgPath = sprintf(
             "M %.2f %.2f A %.2f %.2f 0 %d %d %.2f %.2f",
             $bgStart['x'], $bgStart['y'], $r, $r, $fgLarge, $fgSweep, $fgEnd['x'], $fgEnd['y']
         );
-        
-        // Knopf sitzt exakt am Ende des Stellbogens
+
+        // Knopf: exakt am Ende des Stellbogens (gleicher Kreis)
         $knobX = $fgEnd['x'];
         $knobY = $fgEnd['y'];
-
 
         // Wichtig: im HEREDOC keine JS-Template-Literals verwenden.
         return <<<HTML
@@ -172,19 +168,19 @@ class HeatingTile2 extends IPSModule
           <feGaussianBlur stdDeviation="3" result="b"/>
           <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
-        <!-- fester Verlauf (optisch minimaler Boost, gleiche Farbe) -->
+        <!-- fester Verlauf -->
         <linearGradient id="grad-$iid" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%"   stop-color="$COLOR_ACCENT" stop-opacity="0.85"/>
           <stop offset="100%" stop-color="$COLOR_ACCENT" stop-opacity="1"/>
         </linearGradient>
       </defs>
 
-      <!-- Hintergrundbogen (3/4-Kreis) -->
-      <path id="bg-$iid" class="gBg" d="$bgPath" fill="none" stroke-width="14" stroke-linecap="round"/>
+      <!-- Hintergrundbogen (serverseitig berechnet, 270° CW) -->
+      <path id="bg-$iid" class="gBg" d="$bgPath"
             fill="none" stroke-width="14" stroke-linecap="round"/>
 
       <!-- Stellbogen (serverseitig berechnet; deckungsgleich) -->
-      <path id="fg-$iid" d="$fgPath" class="gAccent" fill="none" stroke="url(#grad-$iid)" stroke-width="20" stroke-linecap="round"/>
+      <path id="fg-$iid" d="$fgPath" class="gAccent" fill="none"
             stroke="url(#grad-$iid)" stroke-width="20" stroke-linecap="round"/>
 
       <!-- Knopf (serverseitig gesetzt; Anzeige-only) -->
@@ -286,24 +282,14 @@ HTML;
     }
 
     /* ===========================
-       Mathe-Helper (serverseitig)
+       Mathe-/Hilfsfunktionen
        =========================== */
-
-    // NEU: Start links (π), im Uhrzeigersinn bis -π/2 (270° Bogen)
-    private function angleForPercent(float $p): float
-    {
-        // 0..100% => Endwinkel = π - 1.5π * p
-        return M_PI - (1.5 * M_PI * ($p / 100.0));
-    }
 
     private function polarToXY(float $cx, float $cy, float $r, float $angle): array
     {
         return ['x' => $cx + $r * cos($angle), 'y' => $cy + $r * sin($angle)];
     }
 
-    /* ===========================
-       Konfigurationsformular
-       =========================== */
     public function GetConfigurationForm()
     {
         return json_encode([
