@@ -98,24 +98,42 @@ class HeatingTile2 extends IPSModule
         $COLOR_BGARC    = 'rgba(255,90,0,0.35)'; // gedimmter Hintergrundbogen
 
         // --- Serverseitig Stellbogen & Knob (Anzeige-only), Start LINKS wie Hintergrundbogen ---
-        $cx = 150.0; $cy = 180.0; $r = 110.0;
-
-        // Startpunkt exakt links (wie im Background-Path)
-        $startPt = ['x' => $cx - $r, 'y' => $cy];
-
-        // Endwinkel: von links aus im Uhrzeigersinn über max. 270°
-        $endAng  = $this->angleForPercent($V);           // korrigierte Funktion unten
-        $endPt   = $this->polarToXY($cx, $cy, $r, $endAng);
-
-        // large-arc-Flag erst ab >180° ⇒ p > 66.666…%
-        $largeArc = ($V > 66.6667) ? 1 : 0;
-
-        $arcPath = sprintf(
-            "M %.2f %.2f A %.2f %.2f 0 %d 1 %.2f %.2f",
-            $startPt['x'], $startPt['y'], $r, $r, $largeArc, $endPt['x'], $endPt['y']
+        // Geometrie (einmal zentral)
+        $cx = 150.0; 
+        $cy = 180.0; 
+        $r  = 110.0;
+        
+        // Gemeinsamer Startwinkel: -135° (oben-links), Endwinkel des Hintergrundbogens: +135° (unten-links).
+        $startAng = -0.75 * M_PI;
+        $endAngBg = +0.75 * M_PI;
+        
+        // Hintergrundbogen: gleicher Mittelpunkt & Start/Ende wie gewünscht (270° CW)
+        $bgStart  = $this->polarToXY($cx, $cy, $r, $startAng);
+        $bgEnd    = $this->polarToXY($cx, $cy, $r, $endAngBg);
+        $bgLarge  = 1;   // 270° => immer "large-arc"
+        $bgSweep  = 1;   // clockwise
+        
+        $bgPath = sprintf(
+            "M %.2f %.2f A %.2f %.2f 0 %d %d %.2f %.2f",
+            $bgStart['x'], $bgStart['y'], $r, $r, $bgLarge, $bgSweep, $bgEnd['x'], $bgEnd['y']
         );
-        $knobX = $endPt['x'];
-        $knobY = $endPt['y'];
+        
+        // Stellbogen: gleicher Startpunkt, Endwinkel proportional (0..270° ab Start)
+        $delta    = 1.5 * M_PI * ($V / 100.0);     // 0..1.5π
+        $endAngFg = $startAng + $delta;            // läuft CW ab Start
+        $fgEnd    = $this->polarToXY($cx, $cy, $r, $endAngFg);
+        $fgLarge  = ($V > 66.6667) ? 1 : 0;        // >180°?
+        $fgSweep  = 1;                              // clockwise
+        
+        $fgPath = sprintf(
+            "M %.2f %.2f A %.2f %.2f 0 %d %d %.2f %.2f",
+            $bgStart['x'], $bgStart['y'], $r, $r, $fgLarge, $fgSweep, $fgEnd['x'], $fgEnd['y']
+        );
+        
+        // Knopf sitzt exakt am Ende des Stellbogens
+        $knobX = $fgEnd['x'];
+        $knobY = $fgEnd['y'];
+
 
         // Wichtig: im HEREDOC keine JS-Template-Literals verwenden.
         return <<<HTML
@@ -162,11 +180,11 @@ class HeatingTile2 extends IPSModule
       </defs>
 
       <!-- Hintergrundbogen (3/4-Kreis) -->
-      <path id="bg-$iid" class="gBg" d="M 60 180 A 110 110 0 1 1 240 180"
+      <path id="bg-$iid" class="gBg" d="$bgPath" fill="none" stroke-width="14" stroke-linecap="round"/>
             fill="none" stroke-width="14" stroke-linecap="round"/>
 
       <!-- Stellbogen (serverseitig berechnet; deckungsgleich) -->
-      <path id="fg-$iid" d="$arcPath" class="gAccent" fill="none"
+      <path id="fg-$iid" d="$fgPath" class="gAccent" fill="none" stroke="url(#grad-$iid)" stroke-width="20" stroke-linecap="round"/>
             stroke="url(#grad-$iid)" stroke-width="20" stroke-linecap="round"/>
 
       <!-- Knopf (serverseitig gesetzt; Anzeige-only) -->
