@@ -98,7 +98,7 @@ class HeatingTile2 extends IPSModule
         $COLOR_BGARC    = 'rgba(255,90,0,0.35)'; // gedimmter Hintergrundbogen
 
         // --- Geometrie / gemeinsamer Mittelpunkt & Startwinkel mit globalem -90° Offset ---
-        $cx = 150.0; $cy = 180.0; $r = 110.0;
+        $cx = 150.0; $cy = 110.0; $r = 110.0;
         $angleOffset = -M_PI / 2; // -90° (CCW) => korrigiert +90° Drift
 
         // Hintergrundbogen: Start -135°, Ende +135°, beide mit Offset; 270° CW
