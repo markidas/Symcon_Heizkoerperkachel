@@ -90,11 +90,16 @@ class HeatingTile2 extends IPSModule
 
         // --- Serverseitig Stellbogen & Knob (Anzeige-only) ---
         $cx = 150.0; $cy = 180.0; $r = 110.0;
-        $startAng = -0.75 * M_PI;
-        $endAng   = $this->angleForPercent($V);
-        $startPt  = $this->polarToXY($cx, $cy, $r, $startAng);
-        $endPt    = $this->polarToXY($cx, $cy, $r, $endAng);
-        $largeArc = ($V > 50) ? 1 : 0;
+        
+        // Start exakt wie der Hintergrundbogen: linker Kreisrand
+        $startPt = ['x' => $cx - $r, 'y' => $cy];
+
+        // Endwinkel: von links aus im Uhrzeigersinn über max. 270°
+        $endAng  = $this->angleForPercent($V);
+        $endPt   = $this->polarToXY($cx, $cy, $r, $endAng);
+
+        // large-arc-Flag: erst ab >180° aktiv => p > 66.666…%
+        $largeArc = ($V > 66.6667) ? 1 : 0;
 
         $arcPath = sprintf(
             "M %.2f %.2f A %.2f %.2f 0 %d 1 %.2f %.2f",
@@ -277,8 +282,8 @@ HTML;
        =========================== */
     private function angleForPercent(float $p): float
     {
-        // 0..100% auf -135° .. +135° (in Radiant)
-        return (-0.75 * M_PI) + (1.5 * M_PI * ($p / 100.0));
+        // 0..100% => Endwinkel = π - 1.5π * p
+        return M_PI - (1.5 * M_PI * ($p / 100.0));
     }
 
     private function polarToXY(float $cx, float $cy, float $r, float $angle): array
