@@ -208,14 +208,14 @@ class HeatingTile2 extends IPSModule
 
       <!-- Hintergrundbogen (serverseitig berechnet, 270° CW) -->
       <path id="bg-$iid" class="gBg" d="$bgPath"
-            fill="none" stroke-width="14" stroke-linecap="round"/>
+            fill="none" stroke-width="5" stroke-linecap="round"/>
 
       <!-- Stellbogen (serverseitig berechnet; deckungsgleich) -->
       <path id="fg-$iid" d="$fgPath" class="gAccent" fill="none"
-            stroke="url(#grad-$iid)" stroke-width="20" stroke-linecap="round"/>
+            stroke="url(#grad-$iid)" stroke-width="10" stroke-linecap="round"/>
 
       <!-- Knopf (serverseitig gesetzt; Anzeige-only) -->
-      <circle id="knob-$iid" class="knob" cx="{$knobX}" cy="{$knobY}" r="16"/>
+      <circle id="knob-$iid" class="knob" cx="{$knobX}" cy="{$knobY}" r="10"/>
 
       <!-- Texte: höher positioniert, dichter unterm Titel -->
       <foreignObject x="0" y="20" width="300" height="120">
