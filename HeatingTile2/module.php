@@ -91,7 +91,7 @@ class HeatingTile2 extends IPSModule
         // --- Geometrie / gemeinsamer Mittelpunkt & Startwinkel mit globalem -90° Offset ---
         $cx = 150.0;
         $cy = 110.0; // so weit wie möglich nach oben (bei r=110 berührt unten die 220er ViewBox)
-        $r  = 110.0;
+        $r  = 150.0;
 
         $angleOffset = -M_PI / 2; // -90° (CCW)
 
