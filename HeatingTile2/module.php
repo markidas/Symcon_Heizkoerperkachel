@@ -28,7 +28,6 @@ class HeatingTile2 extends IPSModule
     {
         parent::ApplyChanges();
 
-        // Auf Variablen-Updates hören (nur existierende)
         foreach ([
             $this->ReadPropertyInteger('ActualTempVarID'),
             $this->ReadPropertyInteger('SetpointVarID'),
@@ -50,10 +49,6 @@ class HeatingTile2 extends IPSModule
         }
     }
 
-    /* ===========================
-       Rendering
-       =========================== */
-
     public function Render(): void
     {
         $dec = max(0, intval($this->ReadPropertyInteger('Decimals')));
@@ -74,32 +69,31 @@ class HeatingTile2 extends IPSModule
         }
     }
 
-    /* ==========
-       HTML/JS
-       ========== */
-
     private function BuildHTML(float $A, float $S, int $V, int $M): string
     {
-        $iid  = $this->InstanceID;
+        $iid      = $this->InstanceID;
         $decimals = (int)$this->ReadPropertyInteger('Decimals');
-        $step = (float)$this->ReadPropertyFloat('SetpointStep');
+        $step     = (float)$this->ReadPropertyFloat('SetpointStep');
 
         // Aktive Actions: Sollwert/Mode
         $idS = (int)$this->ReadPropertyInteger('SetpointVarID');
         $idM = (int)$this->ReadPropertyInteger('ModeVarID');
 
-        // --- Feste Farben ---
-        $COLOR_BG       = '#1f2430';   // Kartenhintergrund
-        $COLOR_TEXT     = '#e8eef6';   // Primärtext
-        $COLOR_MUTED    = '#9aa6b2';   // Sekundärtext
-        $COLOR_ACCENT   = '#ff5a00';   // Akzent (Bogen/Knopf/Active)
-        $COLOR_ONACCENT = '#000000';   // Text auf Akzent
-        $COLOR_OUTLINE  = '#0c0f14';   // Knopfkontur
-        $COLOR_BGARC    = 'rgba(255,90,0,0.35)'; // gedimmter Hintergrundbogen
+        // --- Feste Farben (wie gewünscht) ---
+        $COLOR_BG       = '#ffffff';   // Kartenhintergrund (hell, damit schwarze Schrift passt)
+        $COLOR_TEXT     = '#000000';   // Primärtext SCHWARZ
+        $COLOR_MUTED    = '#000000';   // Sekundärtext ebenfalls schwarz (leicht abgeschwächt via CSS-Opacity)
+        $COLOR_ACCENT   = '#5DCAAC';   // Stellbogen + Knopf + aktiver Button
+        $COLOR_ONACCENT = '#ffffff';   // Text auf aktivem Button = WEISS
+        $COLOR_OUTLINE  = '#2b6d5f';   // leichte Kontur am Knopf
+        $COLOR_BGARC    = '#386c64';   // Hintergrundbogen
 
         // --- Geometrie / gemeinsamer Mittelpunkt & Startwinkel mit globalem -90° Offset ---
-        $cx = 150.0; $cy = 110.0; $r = 110.0;
-        $angleOffset = -M_PI / 2; // -90° (CCW) => korrigiert +90° Drift
+        $cx = 150.0;
+        $cy = 110.0; // so weit wie möglich nach oben (bei r=110 berührt unten die 220er ViewBox)
+        $r  = 110.0;
+
+        $angleOffset = -M_PI / 2; // -90° (CCW)
 
         // Hintergrundbogen: Start -135°, Ende +135°, beide mit Offset; 270° CW
         $startAng = -0.75 * M_PI + $angleOffset;
@@ -131,32 +125,69 @@ class HeatingTile2 extends IPSModule
         $knobX = $fgEnd['x'];
         $knobY = $fgEnd['y'];
 
-        // Wichtig: im HEREDOC keine JS-Template-Literals verwenden.
         return <<<HTML
 <style>
-/* --- feste Farben --- */
-#ht-$iid { --bg: $COLOR_BG; --text: $COLOR_TEXT; --muted: $COLOR_MUTED; --accent: $COLOR_ACCENT; --onaccent: $COLOR_ONACCENT; --outline: $COLOR_OUTLINE; --bgarc: $COLOR_BGARC; }
+/* --- Feste Farb-Variablen --- */
+#ht-$iid {
+  --bg: $COLOR_BG;
+  --text: $COLOR_TEXT;
+  --muted: $COLOR_MUTED;
+  --accent: $COLOR_ACCENT;
+  --onaccent: $COLOR_ONACCENT;
+  --outline: $COLOR_OUTLINE;
+  --bgarc: $COLOR_BGARC;
+
+  /* Responsive Faktoren: werden per JS/ResizeObserver gesetzt */
+  --scale: 1;
+  --pad: 8px;
+}
 
 #ht-$iid { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial; color: var(--text); }
-#ht-$iid .card { background: var(--bg); border-radius: 12px; padding: clamp(8px, 2.2vw, 18px); }
+#ht-$iid .card { background: var(--bg); border-radius: calc(10px * var(--scale)); padding: var(--pad); }
 
-#ht-$iid .row { display: flex; align-items: center; justify-content: center; gap: 1rem; }
-#ht-$iid .big { font-size: clamp(18px, 6.8vw, 40px); font-weight: 600; }
-#ht-$iid .mid { font-size: clamp(12px, 3.6vw, 22px); font-weight: 500; color: var(--muted); }
+/* Typo skalierend */
+#ht-$iid .row { display: flex; align-items: center; justify-content: center; gap: calc(12px * var(--scale)); }
+#ht-$iid .big { font-size: calc(26px * var(--scale)); font-weight: 700; }
+#ht-$iid .mid { font-size: calc(16px * var(--scale)); font-weight: 600; opacity: .8; color: var(--text); }
 
-#ht-$iid .gBg    { stroke: var(--bgarc);  opacity: .9; }
+/* Bogen & Knopf (Farben wie gewünscht) */
+#ht-$iid .gBg    { stroke: var(--bgarc);  opacity: 1; }
 #ht-$iid .gAccent{ stroke: var(--accent); }
-#ht-$iid .knob   { fill: var(--accent); stroke: var(--outline); stroke-width: 4; filter: url(#glow-$iid); pointer-events: none; }
+#ht-$iid .knob   { fill: var(--accent); stroke: var(--outline); stroke-width: calc(3px * var(--scale)); filter: url(#glow-$iid); pointer-events: none; }
 
-#ht-$iid button { border: 0; border-radius: 10px; padding: .4em .7em; font-size: clamp(12px, 3.5vw, 18px); cursor: pointer; background: transparent; color: var(--text); }
-#ht-$iid .pill { padding: .5em .6em; border-radius: 8px; }
-#ht-$iid .active { background: var(--accent); color: var(--onaccent); }
+/* Buttons skalierend */
+#ht-$iid button { 
+  border: 0; 
+  border-radius: calc(10px * var(--scale)); 
+  padding: calc(6px * var(--scale)) calc(10px * var(--scale)); 
+  font-size: calc(16px * var(--scale)); 
+  cursor: pointer; 
+  background: transparent; 
+  color: var(--text); 
+  font-weight: 700;
+}
+#ht-$iid .pill { padding: calc(6px * var(--scale)) calc(10px * var(--scale)); border-radius: calc(8px * var(--scale)); }
 
-#ht-$iid .status { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; margin-top: .5rem; }
-#ht-$iid .status .item { text-align: center; border-radius: 10px; padding: .45rem .5rem; background: rgba(255,255,255,.06); }
-#ht-$iid .status .item strong { display:block; }
+/* Status-Zeile skalierend */
+#ht-$iid .status { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(10px * var(--scale)); margin-top: calc(6px * var(--scale)); }
+#ht-$iid .status .item { 
+  text-align: center; 
+  border-radius: calc(10px * var(--scale)); 
+  padding: calc(10px * var(--scale)) calc(8px * var(--scale)); 
+  background: rgba(0,0,0,0.06);
+}
+#ht-$iid .status .item .pill { font-size: calc(14px * var(--scale)); }
+#ht-$iid .status .item strong { display:block; font-size: calc(16px * var(--scale)); color: var(--text); }
 
-#ht-$iid svg { width: 100%; height: auto; }
+/* Aktiver Status-Button: #5DCAAC + weiße Schrift */
+#ht-$iid .status .item.active,
+#ht-$iid .status .item .pill.active {
+  background: var(--accent) !important; 
+  color: var(--onaccent) !important;
+}
+
+/* SVG responsive */
+#ht-$iid svg { width: 100%; height: auto; display:block; }
 </style>
 
 <div id="ht-$iid" class="card">
@@ -168,9 +199,9 @@ class HeatingTile2 extends IPSModule
           <feGaussianBlur stdDeviation="3" result="b"/>
           <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
-        <!-- fester Verlauf -->
+        <!-- fester Verlauf (selbe Akzentfarbe, optisch minimaler Boost) -->
         <linearGradient id="grad-$iid" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stop-color="$COLOR_ACCENT" stop-opacity="0.85"/>
+          <stop offset="0%"   stop-color="$COLOR_ACCENT" stop-opacity="0.90"/>
           <stop offset="100%" stop-color="$COLOR_ACCENT" stop-opacity="1"/>
         </linearGradient>
       </defs>
@@ -186,10 +217,10 @@ class HeatingTile2 extends IPSModule
       <!-- Knopf (serverseitig gesetzt; Anzeige-only) -->
       <circle id="knob-$iid" class="knob" cx="{$knobX}" cy="{$knobY}" r="16"/>
 
-      <!-- Texte -->
-      <foreignObject x="0" y="70" width="300" height="140">
-        <div xmlns="http://www.w3.org/1999/xhtml" style="display:flex;flex-direction:column;align-items:center;gap:.4rem">
-          <div class="big" id="tActual-$iid">{$A}°C</div>
+      <!-- Texte: höher positioniert, dichter unterm Titel -->
+      <foreignObject x="0" y="20" width="300" height="120">
+        <div xmlns="http://www.w3.org/1999/xhtml" style="display:flex;flex-direction:column;align-items:center;gap:calc(6px * var(--scale))">
+          <div class="big" id="tActual-$iid" style="color:var(--text)">{$A}°C</div>
           <div class="mid" id="tValve-$iid">{$V}%</div>
           <div class="row">
             <button class="pill" onclick="HT$iid.dec()">−</button>
@@ -201,10 +232,10 @@ class HeatingTile2 extends IPSModule
     </svg>
   </div>
 
-  <div class="status">
+  <div class="status" id="status-$iid">
     <div class="item" id="mKomfort-$iid" onclick="HT$iid.setMode(2)">
       <span class="pill">Komfort</span>
-      <strong id="mKomfortVal-$iid" style="color:var(--text)">$S°C</strong>
+      <strong id="mKomfortVal-$iid">$S°C</strong>
     </div>
     <div class="item" id="mStandby-$iid" onclick="HT$iid.setMode(1)">
       <span class="pill">Standby</span>
@@ -218,11 +249,25 @@ class HeatingTile2 extends IPSModule
 </div>
 
 <script>
-// Anzeige-only: kein Drag; nur ± (Setpoint) und Status (Mode) aktiv
 (function(){
-  var st = { v: $V, s: $S, a: $A, m: $M };
+  var st  = { v: $V, s: $S, a: $A, m: $M };
   var VID = { setpoint: $idS, mode: $idM };
   var dec = $decimals, step = $step, iid = $iid;
+
+  // Responsive: skaliere Schrift/Buttons anhand der Kachelbreite
+  var host = document.getElementById('ht-' + iid);
+  if (host && 'ResizeObserver' in window){
+    var ro = new ResizeObserver(function(entries){
+      for (const e of entries){
+        var w = e.contentRect.width || host.clientWidth || 300;
+        var scale = Math.max(0.7, Math.min(3.0, w / 300)); // Basis: 300px Breite
+        var pad = Math.max(6, Math.round(w * 0.02));       // 2% Padding
+        host.style.setProperty('--scale', scale);
+        host.style.setProperty('--pad', pad + 'px');
+      }
+    });
+    ro.observe(host);
+  }
 
   async function rpc(method, params){
     try{
@@ -249,12 +294,17 @@ class HeatingTile2 extends IPSModule
     var tv = document.getElementById('tValve-' + iid);
     if (tv) tv.textContent = Math.round(st.v) + '%';
 
-    var ids = ['mKomfort','mStandby','mFrost'];
-    for (var k=0;k<ids.length;k++){
-      var pill = document.querySelector('#' + ids[k] + '-' + iid + ' .pill');
-      var active = (st.m === (k===0?2:(k===1?1:0)));
-      if (pill) pill.classList.toggle('active', active);
-    }
+    var ids = [
+      {id:'mKomfort', val:2},
+      {id:'mStandby', val:1},
+      {id:'mFrost',   val:0}
+    ];
+    ids.forEach(function(x){
+      var el = document.getElementById(x.id + '-' + iid);
+      if (el) el.classList.toggle('active', st.m === x.val);
+      var pill = el ? el.querySelector('.pill') : null;
+      if (pill) pill.classList.toggle('active', st.m === x.val);
+    });
   }
 
   window['HT' + iid] = {
@@ -281,10 +331,6 @@ class HeatingTile2 extends IPSModule
 HTML;
     }
 
-    /* ===========================
-       Mathe-/Hilfsfunktionen
-       =========================== */
-
     private function polarToXY(float $cx, float $cy, float $r, float $angle): array
     {
         return ['x' => $cx + $r * cos($angle), 'y' => $cy + $r * sin($angle)];
@@ -307,10 +353,7 @@ HTML;
         ]);
     }
 
-    /* ===========================
-       Safe helpers
-       =========================== */
-
+    // --- Safe helpers ---
     private function readVarFloatOrNull(int $varId): ?float
     {
         if ($varId <= 0 || !IPS_VariableExists($varId)) return null;
