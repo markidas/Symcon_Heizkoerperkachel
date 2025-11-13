@@ -80,9 +80,9 @@ class HeatingTile2 extends IPSModule
         $idM = (int)$this->ReadPropertyInteger('ModeVarID');
 
         // --- Feste Farben (wie gewünscht) ---
-        $COLOR_BG       = '#ffffff';   // Kartenhintergrund (hell, damit schwarze Schrift passt)
+        $COLOR_BG       = '#ffffff';   // Kartenhintergrund
         $COLOR_TEXT     = '#000000';   // Primärtext SCHWARZ
-        $COLOR_MUTED    = '#000000';   // Sekundärtext ebenfalls schwarz (leicht abgeschwächt via CSS-Opacity)
+        $COLOR_MUTED    = '#000000';   // Sekundärtext (mit Opacity in CSS)
         $COLOR_ACCENT   = '#5DCAAC';   // Stellbogen + Knopf + aktiver Button
         $COLOR_ONACCENT = '#ffffff';   // Text auf aktivem Button = WEISS
         $COLOR_OUTLINE  = '#2b6d5f';   // leichte Kontur am Knopf
@@ -90,7 +90,7 @@ class HeatingTile2 extends IPSModule
 
         // --- Geometrie / gemeinsamer Mittelpunkt & Startwinkel mit globalem -90° Offset ---
         $cx = 150.0;
-        $cy = 110.0; // so weit wie möglich nach oben (bei r=110 berührt unten die 220er ViewBox)
+        $cy = 130.0; // höher gesetzt, passend zur ViewBox-Höhe
         $r  = 130.0;
 
         $angleOffset = -M_PI / 2; // -90° (CCW)
@@ -168,21 +168,34 @@ class HeatingTile2 extends IPSModule
 }
 #ht-$iid .pill { padding: calc(6px * var(--scale)) calc(10px * var(--scale)); border-radius: calc(8px * var(--scale)); }
 
-/* Status-Zeile skalierend */
-#ht-$iid .status { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(10px * var(--scale)); margin-top: calc(6px * var(--scale)); }
+/* Status-Zeile – IMMER gleiche Größe je Button */
+#ht-$iid .status { 
+  display: grid; 
+  grid-template-columns: repeat(3, 1fr); 
+  gap: calc(10px * var(--scale)); 
+  margin-top: calc(6px * var(--scale)); 
+}
 #ht-$iid .status .item { 
-  text-align: center; 
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+
+  min-height: calc(64px * var(--scale));   /* gleiche Mindesthöhe */
   border-radius: calc(10px * var(--scale)); 
   padding: calc(10px * var(--scale)) calc(8px * var(--scale)); 
   background: rgba(0,0,0,0.06);
 }
-#ht-$iid .status .item .pill { font-size: calc(14px * var(--scale)); }
-#ht-$iid .status .item strong { display:block; font-size: calc(16px * var(--scale)); color: var(--text); }
+#ht-$iid .status .item .pill { font-size: calc(14px * var(--scale)); line-height: 1; }
+#ht-$iid .status .item strong { display:block; font-size: calc(16px * var(--scale)); line-height: 1.15; color: var(--text); }
 
-/* Aktiver Status-Button: #5DCAAC + weiße Schrift */
-#ht-$iid .status .item.active,
-#ht-$iid .status .item .pill.active {
+/* Aktiver Status: #5DCAAC + weiße Schrift */
+#ht-$iid .status .item.active {
   background: var(--accent) !important; 
+  color: var(--onaccent) !important;
+}
+#ht-$iid .status .item.active .pill,
+#ht-$iid .status .item.active strong {
   color: var(--onaccent) !important;
 }
 
@@ -192,7 +205,8 @@ class HeatingTile2 extends IPSModule
 
 <div id="ht-$iid" class="card">
   <div class="gauge">
-    <svg viewBox="0 0 300 220" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+    <!-- ViewBox erhöht auf 260 Höhe, damit r=130 oben nicht abgeschnitten wird -->
+    <svg viewBox="0 0 300 260" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
       <defs>
         <!-- Glow für Knob -->
         <filter id="glow-$iid" x="-50%" y="-50%" width="200%" height="200%">
@@ -217,8 +231,13 @@ class HeatingTile2 extends IPSModule
       <!-- Knopf (serverseitig gesetzt; Anzeige-only) -->
       <circle id="knob-$iid" class="knob" cx="{$knobX}" cy="{$knobY}" r="15"/>
 
-      <!-- Texte: höher positioniert, dichter unterm Titel -->
-      <foreignObject x="0" y="20" width="300" height="120">
+      <!-- Fallback: SVG-Texte (liegen sicher sichtbar über dem Gauge) -->
+      <text x="150" y="88" text-anchor="middle" font-size="24" font-weight="700" fill="#000" id="tActualSVG-$iid">{$A}°C</text>
+      <text x="150" y="110" text-anchor="middle" font-size="16" font-weight="600" fill="#000" id="tValveSVG-$iid">{$V}%</text>
+      <text x="150" y="132" text-anchor="middle" font-size="16" font-weight="600" fill="#000" id="tSetSVG-$iid">{$S}°C</text>
+
+      <!-- Zusätzlich: HTML-Layout (wenn foreignObject vorhanden ist) -->
+      <foreignObject x="0" y="28" width="300" height="124">
         <div xmlns="http://www.w3.org/1999/xhtml" style="display:flex;flex-direction:column;align-items:center;gap:calc(6px * var(--scale))">
           <div class="big" id="tActual-$iid" style="color:var(--text)">{$A}°C</div>
           <div class="mid" id="tValve-$iid">{$V}%</div>
@@ -287,6 +306,7 @@ class HeatingTile2 extends IPSModule
   }
 
   function updateTexts(){
+    // HTML-Variante
     var ta = document.getElementById('tActual-' + iid);
     if (ta) ta.textContent = st.a.toFixed(dec) + '°C';
     var ts = document.getElementById('tSet-' + iid);
@@ -294,6 +314,15 @@ class HeatingTile2 extends IPSModule
     var tv = document.getElementById('tValve-' + iid);
     if (tv) tv.textContent = Math.round(st.v) + '%';
 
+    // SVG-Fallback-Variante
+    var ta2 = document.getElementById('tActualSVG-' + iid);
+    if (ta2) ta2.textContent = st.a.toFixed(dec) + '°C';
+    var tv2 = document.getElementById('tValveSVG-' + iid);
+    if (tv2) tv2.textContent = Math.round(st.v) + '%';
+    var ts2 = document.getElementById('tSetSVG-' + iid);
+    if (ts2) ts2.textContent = st.s.toFixed(dec) + '°C';
+
+    // Aktiver Modus einfärben
     var ids = [
       {id:'mKomfort', val:2},
       {id:'mStandby', val:1},
