@@ -11,7 +11,8 @@ class HeatingTile2 extends IPSModule
         $this->RegisterPropertyInteger('ActualTempVarID', 0);    // Float °C
         $this->RegisterPropertyInteger('SetpointVarID', 0);      // Float °C
         $this->RegisterPropertyInteger('ValvePercentVarID', 0);  // Float/Int 0..100 (Anzeige)
-        $this->RegisterPropertyInteger('ModeVarID', 0);          // Int (Enum)
+        $this->RegisterPropertyInteger('ModeVarID', 0);          // Int (Status: 33,34,35,36,40)
+        $this->RegisterPropertyInteger('ModeActionVarID', 0);    // Int (Action: 1,2,3)
 
         // Anzeige-Parameter
         $this->RegisterPropertyFloat('SetpointStep', 0.5);
@@ -59,85 +60,95 @@ class HeatingTile2 extends IPSModule
         $Vraw = $this->readVarFloatOrNull($this->ReadPropertyInteger('ValvePercentVarID'));
         $V = ($Vraw === null) ? 0 : max(0, min(100, intval(round($Vraw)))); // Anzeige 0..100 %
 
-        $M = $this->readVarIntOrNull($this->ReadPropertyInteger('ModeVarID'));
-        $M = ($M === null) ? 0 : $M;
+        $Mstatus = $this->readVarIntOrNull($this->ReadPropertyInteger('ModeVarID')); // 33/34/35/36/40
+        $Mstatus = ($Mstatus === null) ? 0 : $Mstatus;
 
-        $html = $this->BuildHTML($A, $S, $V, $M);
+        $html = $this->BuildHTML($A, $S, $V, $Mstatus);
         $tileId = $this->GetIDForIdent('Tile');
         if ($tileId) {
             SetValue($tileId, $html);
         }
     }
 
-    private function BuildHTML(float $A, float $S, int $V, int $M): string
+    private function BuildHTML(float $A, float $S, int $V, int $Mstatus): string
     {
         $iid      = $this->InstanceID;
         $decimals = (int)$this->ReadPropertyInteger('Decimals');
         $step     = (float)$this->ReadPropertyFloat('SetpointStep');
 
-        // Aktive Actions: Sollwert/Mode
-        $idS = (int)$this->ReadPropertyInteger('SetpointVarID');
-        $idM = (int)$this->ReadPropertyInteger('ModeVarID');
+        // Variablen für Actions
+        $idS  = (int)$this->ReadPropertyInteger('SetpointVarID');
+        $idMA = (int)$this->ReadPropertyInteger('ModeActionVarID');
 
-        // --- Feste Farben (wie gewünscht) ---
+        // --- Feste Farben ---
         $COLOR_BG       = '#ffffff';   // Kartenhintergrund
-        $COLOR_TEXT     = '#000000';   // Primärtext SCHWARZ
-        $COLOR_MUTED    = '#000000';   // Sekundärtext (mit Opacity in CSS)
-        $COLOR_ACCENT   = '#5DCAAC';   // Stellbogen + Knopf + aktiver Button
-        $COLOR_ONACCENT = '#ffffff';   // Text auf aktivem Button = WEISS
-        $COLOR_OUTLINE  = '#2b6d5f';   // leichte Kontur am Knopf
+        $COLOR_TEXT     = '#000000';   // Text SCHWARZ
+        $COLOR_MUTED    = '#000000';   // wird per Opacity gedimmt
+        $COLOR_ACCENT   = '#5DCAAC';   // Stellbogen + Knopf Basis
+        $COLOR_OUTLINE  = '#2b6d5f';   // Kontur Knopf
         $COLOR_BGARC    = '#386c64';   // Hintergrundbogen
+
+        // Status-spezifische Button-Farben (anpassbar)
+        $COLOR_MODE_KOMFORT = '#5DCAAC';
+        $COLOR_MODE_STANDBY = '#5DCAAC';
+        $COLOR_MODE_FROST   = '#5DCAAC';
+        $COLOR_ONACCENT     = '#ffffff';
 
         // --- Geometrie / gemeinsamer Mittelpunkt & Startwinkel mit globalem -90° Offset ---
         $cx = 150.0;
-        $cy = 130.0; // höher gesetzt, passend zur ViewBox-Höhe
+        $cy = 130.0; // passend zur ViewBox
         $r  = 130.0;
 
         $angleOffset = -M_PI / 2; // -90° (CCW)
 
-        // Hintergrundbogen: Start -135°, Ende +135°, beide mit Offset; 270° CW
+        // Hintergrundbogen: Start -135°, Ende +135° (Offset), 270° CW
         $startAng = -0.75 * M_PI + $angleOffset;
         $endAngBg =  0.75 * M_PI + $angleOffset;
 
         $bgStart = $this->polarToXY($cx, $cy, $r, $startAng);
         $bgEnd   = $this->polarToXY($cx, $cy, $r, $endAngBg);
-        $bgLarge = 1; // 270°
-        $bgSweep = 1; // clockwise
 
         $bgPath = sprintf(
-            "M %.2f %.2f A %.2f %.2f 0 %d %d %.2f %.2f",
-            $bgStart['x'], $bgStart['y'], $r, $r, $bgLarge, $bgSweep, $bgEnd['x'], $bgEnd['y']
+            "M %.2f %.2f A %.2f %.2f 0 1 1 %.2f %.2f",
+            $bgStart['x'], $bgStart['y'], $r, $r, $bgEnd['x'], $bgEnd['y']
         );
 
-        // Stellbogen: gleicher Start, delta 0..270° CW ab Start (Offset bereits im startAng enthalten)
+        // Stellbogen 0..270° CW ab Start
         $delta    = 1.5 * M_PI * ($V / 100.0);   // 0..1.5π
         $endAngFg = $startAng + $delta;
         $fgEnd    = $this->polarToXY($cx, $cy, $r, $endAngFg);
         $fgLarge  = ($V > 66.6667) ? 1 : 0;      // >180°
-        $fgSweep  = 1;                           // clockwise
-
-        $fgPath = sprintf(
-            "M %.2f %.2f A %.2f %.2f 0 %d %d %.2f %.2f",
-            $bgStart['x'], $bgStart['y'], $r, $r, $fgLarge, $fgSweep, $fgEnd['x'], $fgEnd['y']
+        $fgPath   = sprintf(
+            "M %.2f %.2f A %.2f %.2f 0 %d 1 %.2f %.2f",
+            $bgStart['x'], $bgStart['y'], $r, $r, $fgLarge, $fgEnd['x'], $fgEnd['y']
         );
 
-        // Knopf: exakt am Ende des Stellbogens (gleicher Kreis)
+        // Knopf-Ende
         $knobX = $fgEnd['x'];
         $knobY = $fgEnd['y'];
 
+        // Aktive Mode-Klasse (+ Farbe je Status)
+        $activeMode = $this->normalizeMode($Mstatus); // 'komfort' | 'standby' | 'frost'
+        $modeColor  = ($activeMode === 'komfort') ? $COLOR_MODE_KOMFORT
+                   : (($activeMode === 'standby') ? $COLOR_MODE_STANDBY : $COLOR_MODE_FROST);
+
+        // Button-Temperaturen
+        $standbyTemp = '20,5°C';
+        $frostTemp   = '5,0°C';
+
+        // HTML / CSS / JS
         return <<<HTML
 <style>
-/* --- Feste Farb-Variablen --- */
 #ht-$iid {
-  --bg: $COLOR_BG;
-  --text: $COLOR_TEXT;
-  --muted: $COLOR_MUTED;
-  --accent: $COLOR_ACCENT;
-  --onaccent: $COLOR_ONACCENT;
-  --outline: $COLOR_OUTLINE;
-  --bgarc: $COLOR_BGARC;
+  --bg: {$COLOR_BG};
+  --text: {$COLOR_TEXT};
+  --muted: {$COLOR_MUTED};
+  --accent: {$COLOR_ACCENT};
+  --outline: {$COLOR_OUTLINE};
+  --bgarc: {$COLOR_BGARC};
+  --onaccent: {$COLOR_ONACCENT};
+  --mode-active: {$modeColor};
 
-  /* Responsive Faktoren: werden per JS/ResizeObserver gesetzt */
   --scale: 1;
   --pad: 8px;
 }
@@ -150,12 +161,12 @@ class HeatingTile2 extends IPSModule
 #ht-$iid .big { font-size: calc(26px * var(--scale)); font-weight: 700; }
 #ht-$iid .mid { font-size: calc(16px * var(--scale)); font-weight: 600; opacity: .8; color: var(--text); }
 
-/* Bogen & Knopf (Farben wie gewünscht) */
+/* Gauge */
 #ht-$iid .gBg    { stroke: var(--bgarc);  opacity: 1; }
 #ht-$iid .gAccent{ stroke: var(--accent); }
-#ht-$iid .knob   { fill: var(--accent); stroke: var(--outline); stroke-width: calc(3px * var(--scale)); filter: url(#glow-$iid); pointer-events: none; }
+#ht-$iid .knob   { fill: var(--accent); stroke: var(--outline); stroke-width: calc(3px * var(--scale)); pointer-events: none; }
 
-/* Buttons skalierend */
+/* Buttons */
 #ht-$iid button { 
   border: 0; 
   border-radius: calc(10px * var(--scale)); 
@@ -168,7 +179,7 @@ class HeatingTile2 extends IPSModule
 }
 #ht-$iid .pill { padding: calc(6px * var(--scale)) calc(10px * var(--scale)); border-radius: calc(8px * var(--scale)); }
 
-/* Status-Zeile – IMMER gleiche Größe je Button */
+/* Status-Zeile – gleiche Mindesthöhe & Mindestbreite */
 #ht-$iid .status { 
   display: grid; 
   grid-template-columns: repeat(3, 1fr); 
@@ -181,17 +192,20 @@ class HeatingTile2 extends IPSModule
   justify-content: center;
   align-items: center;
 
-  min-height: calc(64px * var(--scale));   /* gleiche Mindesthöhe */
+  min-height: calc(64px * var(--scale));
+  min-width: calc(90px * var(--scale));
+
   border-radius: calc(10px * var(--scale)); 
   padding: calc(10px * var(--scale)) calc(8px * var(--scale)); 
   background: rgba(0,0,0,0.06);
+  transition: background .15s ease, color .15s ease;
 }
 #ht-$iid .status .item .pill { font-size: calc(14px * var(--scale)); line-height: 1; }
 #ht-$iid .status .item strong { display:block; font-size: calc(16px * var(--scale)); line-height: 1.15; color: var(--text); }
 
-/* Aktiver Status: #5DCAAC + weiße Schrift */
+/* Aktiver Status: farbig nach Status + weiße Schrift */
 #ht-$iid .status .item.active {
-  background: var(--accent) !important; 
+  background: var(--mode-active) !important; 
   color: var(--onaccent) !important;
 }
 #ht-$iid .status .item.active .pill,
@@ -205,45 +219,35 @@ class HeatingTile2 extends IPSModule
 
 <div id="ht-$iid" class="card">
   <div class="gauge">
-    <!-- ViewBox erhöht auf 260 Höhe, damit r=130 oben nicht abgeschnitten wird -->
+    <!-- ViewBox 300x260 für r=130 -->
     <svg viewBox="0 0 300 260" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
       <defs>
-        <!-- Glow für Knob -->
-        <filter id="glow-$iid" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="3" result="b"/>
-          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-        </filter>
-        <!-- fester Verlauf (selbe Akzentfarbe, optisch minimaler Boost) -->
+        <!-- Glow wurde entfernt -->
         <linearGradient id="grad-$iid" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stop-color="$COLOR_ACCENT" stop-opacity="0.90"/>
-          <stop offset="100%" stop-color="$COLOR_ACCENT" stop-opacity="1"/>
+          <stop offset="0%"   stop-color="{$COLOR_ACCENT}" stop-opacity="0.90"/>
+          <stop offset="100%" stop-color="{$COLOR_ACCENT}" stop-opacity="1"/>
         </linearGradient>
       </defs>
 
-      <!-- Hintergrundbogen (serverseitig berechnet, 270° CW) -->
+      <!-- Hintergrundbogen -->
       <path id="bg-$iid" class="gBg" d="$bgPath"
             fill="none" stroke-width="10" stroke-linecap="round"/>
 
-      <!-- Stellbogen (serverseitig berechnet; deckungsgleich) -->
+      <!-- Stellbogen -->
       <path id="fg-$iid" d="$fgPath" class="gAccent" fill="none"
             stroke="url(#grad-$iid)" stroke-width="15" stroke-linecap="round"/>
 
-      <!-- Knopf (serverseitig gesetzt; Anzeige-only) -->
+      <!-- Knopf -->
       <circle id="knob-$iid" class="knob" cx="{$knobX}" cy="{$knobY}" r="15"/>
 
-      <!-- Fallback: SVG-Texte (liegen sicher sichtbar über dem Gauge) -->
-      <text x="150" y="88" text-anchor="middle" font-size="24" font-weight="700" fill="#000" id="tActualSVG-$iid">{$A}°C</text>
-      <text x="150" y="110" text-anchor="middle" font-size="16" font-weight="600" fill="#000" id="tValveSVG-$iid">{$V}%</text>
-      <text x="150" y="132" text-anchor="middle" font-size="16" font-weight="600" fill="#000" id="tSetSVG-$iid">{$S}°C</text>
-
-      <!-- Zusätzlich: HTML-Layout (wenn foreignObject vorhanden ist) -->
+      <!-- Nur HTML-Variante für Texte (keine SVG-Fallbacks mehr) -->
       <foreignObject x="0" y="28" width="300" height="124">
         <div xmlns="http://www.w3.org/1999/xhtml" style="display:flex;flex-direction:column;align-items:center;gap:calc(6px * var(--scale))">
           <div class="big" id="tActual-$iid" style="color:var(--text)">{$A}°C</div>
           <div class="mid" id="tValve-$iid">{$V}%</div>
           <div class="row">
             <button class="pill" onclick="HT$iid.dec()">−</button>
-            <div class="mid" id="tSet-$iid" style="color:var(--text)">$S°C</div>
+            <div class="mid" id="tSet-$iid" style="color:var(--text)">{$S}°C</div>
             <button class="pill" onclick="HT$iid.inc()">+</button>
           </div>
         </div>
@@ -252,34 +256,34 @@ class HeatingTile2 extends IPSModule
   </div>
 
   <div class="status" id="status-$iid">
-    <div class="item" id="mKomfort-$iid" onclick="HT$iid.setMode(2)">
+    <div class="item" id="mKomfort-$iid" onclick="HT$iid.setMode(1)">
       <span class="pill">Komfort</span>
-      <strong id="mKomfortVal-$iid">$S°C</strong>
+      <strong id="mKomfortVal-$iid">{$S}°C</strong>
     </div>
-    <div class="item" id="mStandby-$iid" onclick="HT$iid.setMode(1)">
+    <div class="item" id="mStandby-$iid" onclick="HT$iid.setMode(2)">
       <span class="pill">Standby</span>
-      <strong>20,5°C</strong>
+      <strong>{$standbyTemp}</strong>
     </div>
-    <div class="item" id="mFrost-$iid" onclick="HT$iid.setMode(0)">
+    <div class="item" id="mFrost-$iid" onclick="HT$iid.setMode(3)">
       <span class="pill">Frost</span>
-      <strong>5,0°C</strong>
+      <strong>{$frostTemp}</strong>
     </div>
   </div>
 </div>
 
 <script>
 (function(){
-  var st  = { v: $V, s: $S, a: $A, m: $M };
-  var VID = { setpoint: $idS, mode: $idM };
+  var st  = { v: $V, s: $S, a: $A, mstatus: $Mstatus }; // mstatus: 33/34/35/36/40
+  var VID = { setpoint: $idS, modeAction: $idMA };       // modeAction: 1/2/3
   var dec = $decimals, step = $step, iid = $iid;
 
-  // Responsive: skaliere Schrift/Buttons anhand der Kachelbreite
+  // Responsive Skalierung
   var host = document.getElementById('ht-' + iid);
   if (host && 'ResizeObserver' in window){
     var ro = new ResizeObserver(function(entries){
       for (const e of entries){
         var w = e.contentRect.width || host.clientWidth || 300;
-        var scale = Math.max(0.7, Math.min(3.0, w / 300)); // Basis: 300px Breite
+        var scale = Math.max(0.7, Math.min(3.0, w / 300)); // Basis 300px
         var pad = Math.max(6, Math.round(w * 0.02));       // 2% Padding
         host.style.setProperty('--scale', scale);
         host.style.setProperty('--pad', pad + 'px');
@@ -305,8 +309,36 @@ class HeatingTile2 extends IPSModule
     return await rpc('RequestAction', [varId, value]);
   }
 
+  function normalizeMode(statusVal){
+    // 33=Komfort, 34/35/36=Standby, 40=Frost
+    if (statusVal === 33) return 'komfort';
+    if (statusVal === 40) return 'frost';
+    if (statusVal === 34 || statusVal === 35 || statusVal === 36) return 'standby';
+    return 'unknown';
+  }
+
+  function applyActive(){
+    var norm = normalizeMode(st.mstatus);
+    var map = [
+      {id:'mKomfort', key:'komfort'},
+      {id:'mStandby', key:'standby'},
+      {id:'mFrost',   key:'frost'}
+    ];
+    map.forEach(function(x){
+      var el = document.getElementById(x.id + '-' + iid);
+      var active = (x.key === norm);
+      if (el) el.classList.toggle('active', active);
+      var pill = el ? el.querySelector('.pill') : null;
+      if (pill) pill.classList.toggle('active', active);
+      if (active && x.id === 'mKomfort'){
+        // aktive Komfort-Kachel zeigt aktuelle Solltemp
+        var sv = el.querySelector('strong');
+        if (sv) sv.textContent = st.s.toFixed(dec) + '°C';
+      }
+    });
+  }
+
   function updateTexts(){
-    // HTML-Variante
     var ta = document.getElementById('tActual-' + iid);
     if (ta) ta.textContent = st.a.toFixed(dec) + '°C';
     var ts = document.getElementById('tSet-' + iid);
@@ -314,26 +346,11 @@ class HeatingTile2 extends IPSModule
     var tv = document.getElementById('tValve-' + iid);
     if (tv) tv.textContent = Math.round(st.v) + '%';
 
-    // SVG-Fallback-Variante
-    var ta2 = document.getElementById('tActualSVG-' + iid);
-    if (ta2) ta2.textContent = st.a.toFixed(dec) + '°C';
-    var tv2 = document.getElementById('tValveSVG-' + iid);
-    if (tv2) tv2.textContent = Math.round(st.v) + '%';
-    var ts2 = document.getElementById('tSetSVG-' + iid);
-    if (ts2) ts2.textContent = st.s.toFixed(dec) + '°C';
+    // Komfort-Button zeigt immer die aktuelle Solltemp (aktiv ausdrücklich überschrieben)
+    var kVal = document.getElementById('mKomfortVal-' + iid);
+    if (kVal) kVal.textContent = st.s.toFixed(dec) + '°C';
 
-    // Aktiver Modus einfärben
-    var ids = [
-      {id:'mKomfort', val:2},
-      {id:'mStandby', val:1},
-      {id:'mFrost',   val:0}
-    ];
-    ids.forEach(function(x){
-      var el = document.getElementById(x.id + '-' + iid);
-      if (el) el.classList.toggle('active', st.m === x.val);
-      var pill = el ? el.querySelector('.pill') : null;
-      if (pill) pill.classList.toggle('active', st.m === x.val);
-    });
+    applyActive();
   }
 
   window['HT' + iid] = {
@@ -348,9 +365,10 @@ class HeatingTile2 extends IPSModule
       st.s = v; updateTexts();
       await requestAction(VID.setpoint, v);
     },
-    setMode: async function(m){
-      st.m = m; updateTexts();
-      await requestAction(VID.mode, m);
+    // Umschalten: 1=Komfort, 2=Standby, 3=Frost (separate Action-Variable)
+    setMode: async function(actionVal){
+      await requestAction(VID.modeAction, actionVal);
+      // Anzeige bleibt abhängig von ModeVarID (wird über VM_UPDATE nachgeführt)
     }
   };
 
@@ -358,6 +376,17 @@ class HeatingTile2 extends IPSModule
 })();
 </script>
 HTML;
+    }
+
+    /* ===========================
+       Helpers
+       =========================== */
+    private function normalizeMode(int $statusVal): string
+    {
+        if ($statusVal === 33) return 'komfort';
+        if ($statusVal === 40) return 'frost';
+        if ($statusVal === 34 || $statusVal === 35 || $statusVal === 36) return 'standby';
+        return 'unknown';
     }
 
     private function polarToXY(float $cx, float $cy, float $r, float $angle): array
@@ -374,10 +403,11 @@ HTML;
                 ['type' => 'SelectVariable', 'name' => 'ActualTempVarID',   'caption' => 'Ist-Temperatur (Float °C)',            'variableType' => 2],
                 ['type' => 'SelectVariable', 'name' => 'SetpointVarID',     'caption' => 'Sollwert (Float °C)',                  'variableType' => 2],
                 ['type' => 'SelectVariable', 'name' => 'ValvePercentVarID', 'caption' => 'Stellgröße/Valve (Float/Int 0..100%)', 'variableType' => 2],
-                ['type' => 'SelectVariable', 'name' => 'ModeVarID',         'caption' => 'Betriebsart (Integer/Enum)',           'variableType' => 1],
+                ['type' => 'SelectVariable', 'name' => 'ModeVarID',         'caption' => 'Betriebsart Status (33/34/35/36/40)',  'variableType' => 1],
+                ['type' => 'SelectVariable', 'name' => 'ModeActionVarID',   'caption' => 'Betriebsart Umschalten (1/2/3)',       'variableType' => 1],
                 ['type' => 'NumberSpinner',  'name' => 'SetpointStep',      'caption' => 'Schrittweite Sollwert (°C)', 'digits' => 1, 'minimum' => 0.1],
                 ['type' => 'NumberSpinner',  'name' => 'Decimals',          'caption' => 'Nachkommastellen Temperatur', 'minimum' => 0, 'maximum' => 2],
-                ['type' => 'Label',          'caption' => 'Stellbogen ist Anzeige-only. ± ändert den Sollwert, Status-Buttons schalten die Betriebsart.']
+                ['type' => 'Label',          'caption' => 'Stellbogen ist Anzeige-only. ± ändert den Sollwert. Status-Kacheln schalten ModeActionVarID (1/2/3).']
             ]
         ]);
     }
