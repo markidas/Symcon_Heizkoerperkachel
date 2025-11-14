@@ -158,8 +158,8 @@ class HeatingTile2 extends IPSModule
 
 /* Typo skalierend */
 #ht-$iid .row { display: flex; align-items: center; justify-content: center; gap: calc(12px * var(--scale)); }
-#ht-$iid .big { font-size: calc(26px * var(--scale)); font-weight: 700; }
-#ht-$iid .mid { font-size: calc(16px * var(--scale)); font-weight: 600; opacity: .8; color: var(--text); }
+#ht-$iid .big { font-size: calc(50px * var(--scale)); font-weight: 700; }
+#ht-$iid .mid { font-size: calc(30px * var(--scale)); font-weight: 600; opacity: .8; color: var(--text); }
 
 /* Gauge */
 #ht-$iid .gBg    { stroke: var(--bgarc);  opacity: 1; }
@@ -192,8 +192,8 @@ class HeatingTile2 extends IPSModule
   justify-content: center;
   align-items: center;
 
-  min-height: calc(64px * var(--scale));
-  min-width: calc(90px * var(--scale));
+  min-height: calc(30px * var(--scale));
+  min-width: calc(50px * var(--scale));
 
   border-radius: calc(10px * var(--scale)); 
   padding: calc(10px * var(--scale)) calc(8px * var(--scale)); 
@@ -241,7 +241,7 @@ class HeatingTile2 extends IPSModule
       <circle id="knob-$iid" class="knob" cx="{$knobX}" cy="{$knobY}" r="15"/>
 
       <!-- Nur HTML-Variante für Texte (keine SVG-Fallbacks mehr) -->
-      <foreignObject x="0" y="28" width="300" height="124">
+      <foreignObject x="0" y="0" width="300" height="124">
         <div xmlns="http://www.w3.org/1999/xhtml" style="display:flex;flex-direction:column;align-items:center;gap:calc(6px * var(--scale))">
           <div class="big" id="tActual-$iid" style="color:var(--text)">{$A}°C</div>
           <div class="mid" id="tValve-$iid">{$V}%</div>
